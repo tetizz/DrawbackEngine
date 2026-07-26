@@ -74,9 +74,15 @@ async function authenticateFairyStockfishVariantConfig(
     );
   }
   const canonicalPath = await realpath(resolvedPath);
-  if (!sameFilesystemPath(canonicalPath, resolvedPath)) {
+  const canonicalMetadata = await lstat(canonicalPath);
+  if (
+    !canonicalMetadata.isFile()
+    || canonicalMetadata.isSymbolicLink()
+    || metadata.dev !== canonicalMetadata.dev
+    || metadata.ino !== canonicalMetadata.ino
+  ) {
     throw new FairyStockfishLeafEvaluatorError(
-      "Fairy-Stockfish VariantPath cannot traverse a symbolic link.",
+      "Fairy-Stockfish VariantPath changed while it was being authenticated.",
     );
   }
   const bytes = await readFile(canonicalPath);
@@ -224,11 +230,12 @@ export async function initializeFairyStockfishLeafEvaluator(
 async function materializePrivateVariantConfig(
   bytes: Uint8Array,
 ): Promise<PrivateFairyVariantConfig> {
-  const directoryPath = await mkdtemp(
+  const createdDirectoryPath = await mkdtemp(
     join(tmpdir(), "drawbackengine-fairy-"),
   );
-  const variantPath = join(directoryPath, "drawbackchess.ini");
   try {
+    const directoryPath = await realpath(createdDirectoryPath);
+    const variantPath = join(directoryPath, "drawbackchess.ini");
     await writeFile(variantPath, bytes, {
       flag: "wx",
       mode: 0o400,
@@ -237,7 +244,10 @@ async function materializePrivateVariantConfig(
     await chmod(directoryPath, 0o500);
     return Object.freeze({ directoryPath, variantPath });
   } catch (error: unknown) {
-    await removePrivateVariantConfig({ directoryPath, variantPath });
+    await removePrivateVariantConfig({
+      directoryPath: createdDirectoryPath,
+      variantPath: join(createdDirectoryPath, "drawbackchess.ini"),
+    });
     throw error;
   }
 }

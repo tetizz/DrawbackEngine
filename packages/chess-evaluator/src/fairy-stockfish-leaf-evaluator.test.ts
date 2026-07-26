@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import {
   copyFile,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -169,6 +171,57 @@ describe("initializeFairyStockfishLeafEvaluator", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("authenticates a regular file reached through a parent directory link", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "drawbackengine-link-"));
+    const targetDirectory = join(directory, "target");
+    const linkedDirectory = join(directory, "linked");
+    await mkdir(targetDirectory);
+    await copyFile(
+      VARIANT_PATH,
+      join(targetDirectory, "drawbackchess.ini"),
+    );
+    await symlink(
+      targetDirectory,
+      linkedDirectory,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const transport = new MockUciTransport([
+      ...handshake(),
+      { command: "quit" },
+    ]);
+    const client = new UciClient(transport);
+    try {
+      const evaluator = await initializeFairyStockfishLeafEvaluator({
+        client,
+        depth: 3,
+        variantPath: join(linkedDirectory, "drawbackchess.ini"),
+      });
+      await evaluator.close();
+      expect(transport.complete).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "rejects a symbolic link to the variant file",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "drawbackengine-link-"));
+      const variantPath = join(directory, "drawbackchess.ini");
+      await symlink(VARIANT_PATH, variantPath, "file");
+      const client = new UciClient(new MockUciTransport([]));
+      try {
+        await expect(initializeFairyStockfishLeafEvaluator({
+          client,
+          depth: 3,
+          variantPath,
+        })).rejects.toThrow("regular non-symlink file");
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("loads the custom variant and searches the exact synthetic root mask", async () => {
     const { evaluator, transport } = await initializedClient([
