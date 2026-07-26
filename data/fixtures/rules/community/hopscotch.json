@@ -1,0 +1,1 @@
+{"ruleId":"hopscotch","initialState":{"previousClass":null},"moves":[{"move":"a1b2","destination":"dark","stateAfter":{"previousClass":true}},{"candidate":"c1d2","destination":"dark","allowed":false},{"candidate":"a1a2","destination":"light","allowed":true}]}

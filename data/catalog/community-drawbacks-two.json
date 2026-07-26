@@ -1,0 +1,134 @@
+[
+  {
+    "id": "bottled-lighting",
+    "name": "Bottled Lighting",
+    "description": "If an ordinary legal king move exists, the affected player must move the king.",
+    "parameterSchema": {},
+    "ambiguities": ["The source title spells Lighting rather than Lightning; castling is treated as a king move."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-mover",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/bottled-lighting.json"
+  },
+  {
+    "id": "chivalry",
+    "name": "Chivalry",
+    "description": "Only a knight can capture an opposing rook or queen.",
+    "parameterSchema": {},
+    "ambiguities": [],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-captured-piece",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/chivalry.json"
+  },
+  {
+    "id": "covering-fire",
+    "name": "Covering Fire",
+    "description": "A capture is legal only when the target square can be captured from at least two distinct origins.",
+    "parameterSchema": {},
+    "ambiguities": ["Different ways means ordinary legal captures from distinct physical origins; promotion variants do not count separately."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-availability",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/covering-fire.json"
+  },
+  {
+    "id": "escort-mission",
+    "name": "Escort Mission",
+    "description": "If the king has an ordinary legal capture, it must make a capture.",
+    "parameterSchema": {},
+    "ambiguities": [],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-capture",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/escort-mission.json"
+  },
+  {
+    "id": "evil-twin",
+    "name": "Evil Twin",
+    "description": "If a piece can capture an opposing piece of the same type, one of those captures is compulsory.",
+    "parameterSchema": {},
+    "ambiguities": ["The source contains a typo; its example is interpreted as exact mover and captured-piece type identity."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-capture",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/evil-twin.json"
+  },
+  {
+    "id": "exclusivity-clause",
+    "name": "Exclusivity Clause",
+    "description": "A destination is forbidden when ordinary legal moves from more than one origin can reach it.",
+    "parameterSchema": {},
+    "ambiguities": ["Reachability is based on ordinary legal moves rather than pseudo-legal geometric attacks."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-destination",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/exclusivity-clause.json"
+  },
+  {
+    "id": "leaps-and-bounds",
+    "name": "Leaps and Bounds",
+    "description": "A piece cannot move to an adjacent square.",
+    "parameterSchema": {},
+    "ambiguities": [],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-distance",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/leaps-and-bounds.json"
+  },
+  {
+    "id": "left-for-dead",
+    "name": "Left for Dead",
+    "description": "Captures must move toward the affected player's left.",
+    "parameterSchema": {},
+    "ambiguities": ["Left is interpreted relative to the affected player's viewpoint."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-direction",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/left-for-dead.json"
+  },
+  {
+    "id": "outflanked",
+    "name": "Outflanked",
+    "description": "Captures on a rim square are forbidden.",
+    "parameterSchema": {},
+    "ambiguities": ["The king-capture exception is inert under standard chess; en-passant is classified by its landing square."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "board-terrain",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/outflanked.json"
+  },
+  {
+    "id": "punching-down",
+    "name": "Punching Down",
+    "description": "A piece cannot capture a target worth more than the moving piece.",
+    "parameterSchema": {},
+    "ambiguities": ["A promotion capture compares the moving pawn's pre-promotion value."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "material-comparison",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/punching-down.json"
+  },
+  {
+    "id": "simplifier",
+    "name": "Simplifier",
+    "description": "If a capture by a piece worth no more than its target exists, one of those captures is compulsory.",
+    "parameterSchema": {},
+    "ambiguities": ["A promotion capture compares the moving pawn's pre-promotion value."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-capture",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/simplifier.json"
+  },
+  {
+    "id": "bipartisanship",
+    "name": "Bipartisanship",
+    "description": "The affected player cannot move left twice in a row or right twice in a row.",
+    "parameterSchema": {},
+    "ambiguities": ["A vertical move resets the horizontal streak; castling counts as a horizontal king move."],
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "history-based-restriction",
+    "tests": ["packages/drawback-engine/src/rules/community-rules-two.test.ts"],
+    "fixture": "data/fixtures/rules/community-two/bipartisanship.json"
+  }
+]

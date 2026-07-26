@@ -1,0 +1,134 @@
+[
+  {
+    "id": "abstinence",
+    "name": "Abstinence",
+    "description": "Lose when the opponent has two adjacent non-pawn pieces of the same type.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "start-of-turn-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/abstinence.json",
+    "ambiguities": ["The condition is evaluated at the affected player's turn start; promoted duplicate piece types count."]
+  },
+  {
+    "id": "always-check-it-might-be-mate",
+    "name": "Always Check, It Might Be Mate",
+    "description": "Lose when starting a turn in check.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "start-of-turn-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/always-check-it-might-be-mate.json",
+    "ambiguities": []
+  },
+  {
+    "id": "boastful",
+    "name": "Boastful",
+    "description": "Lose when holding fewer pieces than the opponent.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "material-comparison-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/boastful.json",
+    "ambiguities": ["All current board pieces, including pawns and kings, are counted."]
+  },
+  {
+    "id": "closed-book",
+    "name": "Closed Book",
+    "description": "Lose when any file contains no pawns.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "board-terrain-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/closed-book.json",
+    "ambiguities": []
+  },
+  {
+    "id": "hold-them-back",
+    "name": "Hold Them Back",
+    "description": "Lose when an opposing pawn reaches the affected player's half of the board.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "start-of-turn-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/hold-them-back.json",
+    "ambiguities": ["The player's side is their color-relative four-rank half; promoted pawns no longer count as pawns."]
+  },
+  {
+    "id": "homeland-security",
+    "name": "Homeland Security",
+    "description": "Lose when an opposing piece enters either home rank.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "start-of-turn-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/homeland-security.json",
+    "ambiguities": ["The sixteen starting squares are interpreted as the affected player's two home ranks."]
+  },
+  {
+    "id": "ivory-tower",
+    "name": "Ivory Tower",
+    "description": "Lose when an opposing piece is adjacent to the affected player's king.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "adjacency-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/ivory-tower.json",
+    "ambiguities": ["Adjacency is physical and does not require the opposing piece to give legal check."]
+  },
+  {
+    "id": "king-of-the-hill",
+    "name": "King of the Hill",
+    "description": "After the first turn, lose when no affected piece occupies d4, e4, d5, or e5.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "start-of-turn-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/king-of-the-hill.json",
+    "ambiguities": ["First turn is interpreted independently for each player."]
+  },
+  {
+    "id": "modest",
+    "name": "Modest",
+    "description": "Lose when holding more pieces than the opponent.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "material-comparison-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/modest.json",
+    "ambiguities": ["All current board pieces, including pawns and kings, are counted."]
+  },
+  {
+    "id": "simp",
+    "name": "Simp",
+    "description": "Lose when the affected player has no queen.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "material-presence-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/simp.json",
+    "ambiguities": ["Any current queen, including a promoted queen, satisfies the condition."]
+  },
+  {
+    "id": "tower-defense",
+    "name": "Tower Defense",
+    "description": "Rooks cannot move, and losing every rook causes a loss.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-mover-and-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/tower-defense.json",
+    "ambiguities": ["Any current rook, including a promoted rook, satisfies the condition."]
+  },
+  {
+    "id": "warlord",
+    "name": "Warlord",
+    "description": "From turn twelve onward, lose while the king remains on either home rank.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "deadline-loss",
+    "tests": ["packages/drawback-engine/src/rules/loss-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/warlord.json",
+    "ambiguities": ["Move twelve is color-relative; first two ranks means the affected player's two home ranks."]
+  }
+]

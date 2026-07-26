@@ -1,0 +1,7 @@
+{
+  "ruleId": "inside-the-lines",
+  "positionFen": "4k3/8/8/8/8/8/RN6/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["b2c4", "b2a4"],
+  "allowedMoves": ["b2c4"],
+  "forbiddenMoves": ["b2a4"]
+}

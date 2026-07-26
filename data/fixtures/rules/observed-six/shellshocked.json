@@ -1,0 +1,11 @@
+{
+  "ruleId": "shellshocked",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/8/3R4/P7/4K3 w - - 0 1",
+  "history": [
+    {"color":"black","from":"d5","to":"e4","piece":"pawn","captured":"pawn","san":"dxe4","flags":"capture"}
+  ],
+  "ordinaryLegalMoves": ["a2a3", "d3d4"],
+  "allowedMoves": ["a2a3"],
+  "forbiddenMoves": ["d3d4"]
+}

@@ -1,0 +1,1 @@
+{"ruleId":"queen-bee","initialState":{"queenCaptureOccurred":false},"moves":[{"move":"d1d7","capture":"pawn","stateAfter":{"queenCaptureOccurred":true}},{"candidate":"d7d8","allowed":false}]}

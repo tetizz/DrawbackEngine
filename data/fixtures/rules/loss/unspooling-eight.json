@@ -1,0 +1,6 @@
+{
+  "ruleId": "unspooling",
+  "positionFen": "4k3/8/8/8/8/8/8/4K3 w - - 0 101",
+  "historyByColor": {"white": 100, "black": 100},
+  "lossExpected": true
+}

@@ -1,0 +1,8 @@
+{
+  "ruleId": "spice-of-life",
+  "description": "After one knight moves, neither knight may move on White's next turn.",
+  "initialFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "moves": ["g1f3", "g8f6"],
+  "allowedProbe": "e2e4",
+  "forbiddenProbes": ["f3g5", "b1c3"]
+}

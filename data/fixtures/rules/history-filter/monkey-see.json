@@ -1,0 +1,18 @@
+{
+  "ruleId": "monkey-see",
+  "positionFen": "4k3/8/7p/8/8/8/r7/R1B1K3 w - - 0 2",
+  "history": [
+    {
+      "from": "a8",
+      "to": "a2",
+      "color": "black",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxa2",
+      "flags": "capture"
+    }
+  ],
+  "ordinaryLegalMoves": ["a1a2", "c1h6"],
+  "allowedMoves": ["a1a2"],
+  "forbiddenMoves": ["c1h6"]
+}

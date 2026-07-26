@@ -1,0 +1,89 @@
+[
+  {
+    "id": "bishop-fan-club",
+    "name": "Bishop Fan Club",
+    "description": "Every promotion must create a bishop, and primary king and queen moves must be diagonal.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-geometry",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-eight.test.ts"],
+    "fixture": "data/fixtures/rules/observed-eight/bishop-fan-club.json",
+    "ambiguities": ["Castling is forbidden because its primary king move is orthogonal. Promotion is classified by the primary pawn mover but its result is required to be a bishop."]
+  },
+  {
+    "id": "rook-fan-club",
+    "name": "Rook Fan Club",
+    "description": "Every promotion must create a rook, and primary king and queen moves must be orthogonal.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-geometry",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-eight.test.ts"],
+    "fixture": "data/fixtures/rules/observed-eight/rook-fan-club.json",
+    "ambiguities": ["Castling remains allowed because its primary king move is orthogonal. Promotion is classified by the primary pawn mover but its result is required to be a rook."]
+  },
+  {
+    "id": "respectful",
+    "name": "Respectful",
+    "description": "The affected player cannot make a move that gives check.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "check-restriction",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-eight.test.ts"],
+    "fixture": "data/fixtures/rules/observed-eight/respectful.json",
+    "ambiguities": ["Check is evaluated from the complete resulting position, including discovered, promotion, en-passant, and castling-rook attacks. Checkmate is also forbidden."]
+  },
+  {
+    "id": "shapeshifter",
+    "name": "Shapeshifter",
+    "description": "The original queen begins bishop-like and copies each non-pawn type captured by any own piece; copying a knight freezes it.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-transformation",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-eight.test.ts"],
+    "fixture": "data/fixtures/rules/observed-eight/shapeshifter.json",
+    "ambiguities": ["Only the original queen is tracked; promoted queens are unrestricted. Every own primary capture of a non-pawn changes the mode, even when another piece captures. All reachable copied geometries are standard-queen move subsets. Reconstruction assumes history from the standard game start."]
+  },
+  {
+    "id": "fischer-random",
+    "name": "Fischer Random",
+    "description": "By turn twenty, every surviving own non-pawn piece must occupy the home rank on a file where that current piece type could not have started.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "deadline",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-eight.test.ts"],
+    "fixture": "data/fixtures/rules/observed-eight/fischer-random.json",
+    "ambiguities": ["The deadline counts affected-player turns. The arrangement must remain valid after turn twenty. Promoted pieces use their current type's standard starting files; captured pieces are ignored."]
+  },
+  {
+    "id": "unspooling",
+    "name": "Unspooling",
+    "description": "The affected player's primary moves share a budget of 100 Manhattan-distance units.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-budget",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-eight.test.ts"],
+    "fixture": "data/fixtures/rules/observed-eight/unspooling.json",
+    "ambiguities": ["Distance is Manhattan distance between primary endpoints. Castling costs the king's distance only. A move may spend the final unit; exhaustion is a loss at the beginning of the affected player's next turn under the project-wide loss timing policy. Standard checkmate on the final-unit move ends the game before that later loss can occur. If every legal move costs more than the remaining budget, the generic no-drawback-legal-move loss applies."]
+  },
+  {
+    "id": "blinded-by-the-sun",
+    "name": "Blinded by the Sun",
+    "description": "The affected player cannot end a move pseudo-attacking one hidden central square.",
+    "parameterSchema": {
+      "type": "object",
+      "properties": {
+        "square": {
+          "type": "string",
+          "enum": ["d4", "e4", "d5", "e5"]
+        }
+      },
+      "required": ["square"],
+      "additionalProperties": false
+    },
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "hidden-square",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-eight.test.ts"],
+    "fixture": "data/fixtures/rules/observed-eight/blinded-by-the-sun.json",
+    "ambiguities": ["The 14 observed site samples contain only d4, e4, d5, and e5; this is treated as the executable parameter domain but does not prove the official domain. Attacking means resulting-position pseudo-attack, so pinned pieces still attack."]
+  }
+]

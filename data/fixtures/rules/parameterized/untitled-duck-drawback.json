@@ -1,0 +1,10 @@
+{
+  "ruleId": "untitled-duck-drawback",
+  "parameters": {
+    "square": "e3"
+  },
+  "description": "The hidden duck blocks White's e-pawn double step through e3.",
+  "initialFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "allowedProbe": "g1f3",
+  "forbiddenProbe": "e2e4"
+}

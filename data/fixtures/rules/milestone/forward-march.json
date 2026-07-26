@@ -1,0 +1,8 @@
+{
+  "ruleId": "forward-march",
+  "description": "A White rook may advance or move laterally but not retreat toward rank one.",
+  "initialFen": "4k3/8/8/8/3R4/8/8/4K3 w - - 0 1",
+  "moves": [],
+  "allowedProbes": ["d4d5", "d4e4"],
+  "forbiddenProbe": "d4d3"
+}

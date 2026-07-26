@@ -1,0 +1,6 @@
+{
+  "ruleId": "pawn-battle",
+  "positionFen": "4k3/pp6/8/8/8/8/P7/4K3 w - - 0 1",
+  "lossExpected": true,
+  "historyByColor": {}
+}

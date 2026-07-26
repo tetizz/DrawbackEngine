@@ -1,0 +1,64 @@
+[
+  {
+    "id": "untitled-duck-drawback",
+    "name": "Untitled Duck Drawback",
+    "description": "A duck occupies a hidden square; primary movers cannot pass through or land on it.",
+    "parameterSchema": {
+      "type": "object",
+      "required": ["square"],
+      "properties": {
+        "square": {
+          "type": "string",
+          "pattern": "^[a-h][1-8]$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "hidden-square",
+    "tests": ["packages/drawback-engine/src/rules/parameterized-rules.test.ts"],
+    "fixture": "data/fixtures/rules/parameterized/untitled-duck-drawback.json"
+  },
+  {
+    "id": "just-passing-through",
+    "name": "Just Passing Through",
+    "description": "Captures on one hidden rank are forbidden.",
+    "parameterSchema": {
+      "type": "object",
+      "required": ["rank"],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        }
+      },
+      "additionalProperties": false
+    },
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "hidden-rank",
+    "tests": ["packages/drawback-engine/src/rules/parameterized-rules.test.ts"],
+    "fixture": "data/fixtures/rules/parameterized/just-passing-through.json"
+  },
+  {
+    "id": "gambler",
+    "name": "Gambler",
+    "description": "A hidden forbidden mover type is deterministically re-randomized each affected-player turn.",
+    "parameterSchema": {
+      "type": "object",
+      "required": ["seed"],
+      "properties": {
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "additionalProperties": false
+    },
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "hidden-piece-type",
+    "tests": ["packages/drawback-engine/src/rules/parameterized-rules.test.ts"],
+    "fixture": "data/fixtures/rules/parameterized/gambler.json"
+  }
+]

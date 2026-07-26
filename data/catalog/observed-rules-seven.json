@@ -1,0 +1,68 @@
+[
+  {
+    "id": "friendly-fire",
+    "name": "Friendly Fire",
+    "description": "A piece may move only when its destination is defended by another own piece in the resulting position.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "defended-destination",
+    "tests": ["packages/drawback-engine/src/rules/remaining-stateful-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-seven/friendly-fire.json",
+    "ambiguities": ["Defense is evaluated after the complete move, including en-passant removal, promotion, and auxiliary castling-rook movement. The moving piece does not defend itself."]
+  },
+  {
+    "id": "protected-pawns",
+    "name": "Protected Pawns",
+    "description": "A pawn may move only when its destination is defended by another own piece in the resulting position.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "defended-destination",
+    "tests": ["packages/drawback-engine/src/rules/remaining-stateful-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-seven/protected-pawns.json",
+    "ambiguities": ["The restriction applies to the primary pawn mover, including a promoting pawn, and defense is evaluated after the complete move."]
+  },
+  {
+    "id": "rook-on-the-seventh",
+    "name": "Rook on the Seventh",
+    "description": "By the affected player's fifteenth turn, an original or promoted rook must have moved onto the opponent-relative seventh rank.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "deadline",
+    "tests": ["packages/drawback-engine/src/rules/remaining-stateful-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-seven/rook-on-the-seventh.json",
+    "ambiguities": ["White's target is rank 7 and Black's is rank 2. On turn 15, only satisfying rook moves are allowed while any exist; failure is checked at the start of turn 16. The observations do not define whether a rook merely occupying the rank without having moved there counts."]
+  },
+  {
+    "id": "rising-water",
+    "name": "Rising Water",
+    "description": "Every ten affected-player turns, one additional rank from that player's home edge becomes underwater; pieces cannot move from or to underwater squares.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "board-terrain",
+    "tests": ["packages/drawback-engine/src/rules/remaining-stateful-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-seven/rising-water.json",
+    "ambiguities": ["Turns are counted separately for the affected player. Water rises from White's rank 1 and Black's rank 8 after each block of ten completed affected-player moves."]
+  },
+  {
+    "id": "queen-disguise",
+    "name": "Queen Disguise",
+    "description": "The original queen's first move locks it to rook-like or bishop-like geometry for its remaining moves.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "history-based-restriction",
+    "tests": ["packages/drawback-engine/src/rules/remaining-stateful-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-seven/queen-disguise.json",
+    "ambiguities": ["Only the original queen is tracked; promoted replacement queens are unrestricted. Identity reconstruction assumes observation from the standard game start."]
+  },
+  {
+    "id": "now-kiss",
+    "name": "Now Kiss",
+    "description": "Bishops, knights, and rooks cannot capture until a same-type pair has ended an affected-player turn adjacent; each piece type unlocks permanently and independently.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "history-based-restriction",
+    "tests": ["packages/drawback-engine/src/rules/remaining-stateful-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-seven/now-kiss.json",
+    "ambiguities": ["Adjacency includes orthogonal and diagonal neighbors. Any same-type pair, including promoted pieces, unlocks that type after a completed move. Reconstruction assumes observation from the game start."]
+  }
+]

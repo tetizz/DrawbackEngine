@@ -1,0 +1,7 @@
+{
+  "ruleId": "eisoptrophobia",
+  "positionFen": "4kb1r/6P1/8/8/8/8/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["g7f8q", "g7h8q"],
+  "allowedMoves": ["g7f8q", "g7h8q"],
+  "forbiddenMoves": []
+}

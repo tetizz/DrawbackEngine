@@ -1,0 +1,81 @@
+{
+  "ruleId": "doctor-octopus",
+  "positionFen": "4k3/8/8/8/8/8/p7/R3K3 w - - 0 9",
+  "history": [
+    {
+      "from": "a1",
+      "to": "a2",
+      "color": "white",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxa2",
+      "flags": "capture"
+    },
+    {
+      "from": "a2",
+      "to": "b2",
+      "color": "white",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxb2",
+      "flags": "capture"
+    },
+    {
+      "from": "b2",
+      "to": "c2",
+      "color": "white",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxc2",
+      "flags": "capture"
+    },
+    {
+      "from": "c2",
+      "to": "d2",
+      "color": "white",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxd2",
+      "flags": "capture"
+    },
+    {
+      "from": "d2",
+      "to": "e2",
+      "color": "white",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxe2",
+      "flags": "capture"
+    },
+    {
+      "from": "e2",
+      "to": "f2",
+      "color": "white",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxf2",
+      "flags": "capture"
+    },
+    {
+      "from": "f2",
+      "to": "g2",
+      "color": "white",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxg2",
+      "flags": "capture"
+    },
+    {
+      "from": "g2",
+      "to": "h2",
+      "color": "white",
+      "piece": "rook",
+      "captured": "pawn",
+      "san": "Rxh2",
+      "flags": "capture"
+    }
+  ],
+  "ordinaryLegalMoves": ["e1e2", "a1a2"],
+  "allowedMoves": ["e1e2"],
+  "forbiddenMoves": ["a1a2"]
+}

@@ -1,0 +1,11 @@
+{
+  "ruleId": "superstitious",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/8/5N2/8/2B1K3 w - - 0 1",
+  "history": [
+    {"color":"black","from":"c6","to":"d4","piece":"knight","captured":"pawn","san":"Nxd4","flags":"capture"}
+  ],
+  "ordinaryLegalMoves": ["f3d4", "c1b2"],
+  "allowedMoves": ["c1b2"],
+  "forbiddenMoves": ["f3d4"]
+}

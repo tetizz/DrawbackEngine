@@ -1,0 +1,27 @@
+{
+  "ruleId": "haunted",
+  "positionFen": "4k3/8/8/3q4/5N2/8/8/4K3 w - - 0 2",
+  "history": [
+    {
+      "from": "e4",
+      "to": "d5",
+      "color": "white",
+      "piece": "pawn",
+      "captured": "pawn",
+      "san": "exd5",
+      "flags": "capture"
+    },
+    {
+      "from": "d8",
+      "to": "d5",
+      "color": "black",
+      "piece": "queen",
+      "captured": "pawn",
+      "san": "Qxd5",
+      "flags": "capture"
+    }
+  ],
+  "ordinaryLegalMoves": ["f4h5", "f4d5"],
+  "allowedMoves": ["f4h5"],
+  "forbiddenMoves": ["f4d5"]
+}

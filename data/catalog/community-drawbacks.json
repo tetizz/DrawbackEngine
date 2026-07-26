@@ -1,0 +1,152 @@
+[
+  {
+    "id": "greedy",
+    "name": "Greedy",
+    "description": "Cannot capture a piece while a higher-value capture is available.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-capture",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/greedy.json"
+  },
+  {
+    "id": "professional-courtesy",
+    "name": "Professional Courtesy",
+    "description": "Cannot capture a non-pawn piece with a piece of the same type.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-captured-piece",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/professional-courtesy.json"
+  },
+  {
+    "id": "snipers",
+    "name": "Snipers",
+    "description": "Bishops can capture only from at least four diagonal squares away.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-distance",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/snipers.json"
+  },
+  {
+    "id": "stay-at-home-mom",
+    "name": "Stay at Home Mom",
+    "description": "Queens can move only to the affected player's two home ranks.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-destination",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/stay-at-home-mom.json"
+  },
+  {
+    "id": "elephants-fear-mice",
+    "name": "Elephants Fear Mice",
+    "description": "Non-pawn pieces cannot capture pawns.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-captured-piece",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/elephants-fear-mice.json"
+  },
+  {
+    "id": "far-sighted",
+    "name": "Far Sighted",
+    "description": "Cannot capture an adjacent target.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-distance",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/far-sighted.json"
+  },
+  {
+    "id": "whites-of-their-eyes",
+    "name": "Whites of Their Eyes",
+    "description": "Capturing moves can have Manhattan distance at most two.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-distance",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/whites-of-their-eyes.json"
+  },
+  {
+    "id": "champing-at-the-bit",
+    "name": "Champing at the Bit",
+    "description": "Every pawn move must have Manhattan distance exactly two.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-distance",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/champing-at-the-bit.json"
+  },
+  {
+    "id": "scent-of-blood",
+    "name": "The Scent of Blood",
+    "description": "A piece with an available capture cannot make a non-capturing move.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-capture",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/scent-of-blood.json"
+  },
+  {
+    "id": "indecisive",
+    "name": "Indecisive",
+    "description": "A piece cannot capture if it has multiple capturing moves.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-choice",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/indecisive.json"
+  },
+  {
+    "id": "control-center",
+    "name": "Control Center",
+    "description": "Non-capturing moves must end on one of the four central files.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-destination",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/control-center.json"
+  },
+  {
+    "id": "out-of-breath",
+    "name": "Out of Breath",
+    "description": "The affected player can move a king only once.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "history-based-restriction",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/out-of-breath.json"
+  },
+  {
+    "id": "queen-bee",
+    "name": "Queen Bee",
+    "description": "After capturing with a queen, the affected player can no longer move queens.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "history-based-restriction",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/queen-bee.json"
+  },
+  {
+    "id": "alternator",
+    "name": "Alternator",
+    "description": "Moves must alternate between pawns and non-pawn pieces.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "piece-class-alternation",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/alternator.json"
+  },
+  {
+    "id": "hopscotch",
+    "name": "Hopscotch",
+    "description": "Move destinations must alternate between light and dark squares.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "destination-alternation",
+    "tests": ["packages/drawback-engine/src/rules/community-rules.test.ts"],
+    "fixture": "data/fixtures/rules/community/hopscotch.json"
+  }
+]

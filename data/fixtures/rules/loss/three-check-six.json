@@ -1,0 +1,11 @@
+{
+  "ruleId": "three-check",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/8/8/8/4K3 w - - 0 1",
+  "history": [
+    {"color":"black","from":"a8","to":"a1","piece":"rook","san":"Ra1+","flags":"quiet"},
+    {"color":"black","from":"a1","to":"a2","piece":"rook","san":"Ra2+","flags":"quiet"},
+    {"color":"black","from":"a2","to":"e2","piece":"rook","san":"Re2#","flags":"quiet"}
+  ],
+  "lossExpected": true
+}

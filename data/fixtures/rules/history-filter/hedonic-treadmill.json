@@ -1,0 +1,41 @@
+{
+  "ruleId": "hedonic-treadmill",
+  "positionFen": "rnb1kbnr/pppp1ppp/8/4p3/4P2q/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+  "history": [
+    {
+      "from": "e2",
+      "to": "e4",
+      "color": "white",
+      "piece": "pawn",
+      "san": "e4",
+      "flags": "quiet"
+    },
+    {
+      "from": "e7",
+      "to": "e5",
+      "color": "black",
+      "piece": "pawn",
+      "san": "e5",
+      "flags": "quiet"
+    },
+    {
+      "from": "g1",
+      "to": "f3",
+      "color": "white",
+      "piece": "knight",
+      "san": "Nf3",
+      "flags": "quiet"
+    },
+    {
+      "from": "d8",
+      "to": "h4",
+      "color": "black",
+      "piece": "queen",
+      "san": "Qh4",
+      "flags": "quiet"
+    }
+  ],
+  "ordinaryLegalMoves": ["d1e2", "f3h4"],
+  "allowedMoves": ["d1e2"],
+  "forbiddenMoves": ["f3h4"]
+}

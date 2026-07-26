@@ -1,0 +1,7 @@
+{
+  "ruleId": "pack-mentality",
+  "positionFen": "4k3/8/8/8/P7/2R5/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["c3b3", "c3e3", "c3c4"],
+  "allowedMoves": ["c3b3"],
+  "forbiddenMoves": ["c3e3", "c3c4"]
+}

@@ -1,0 +1,7 @@
+{
+  "ruleId": "savior-complex",
+  "positionFen": "k7/8/8/8/8/8/2nQ4/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["d2c2", "e1f1"],
+  "allowedMoves": ["d2c2"],
+  "forbiddenMoves": ["e1f1"]
+}

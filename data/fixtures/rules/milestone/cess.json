@@ -1,0 +1,8 @@
+{
+  "ruleId": "cess",
+  "description": "Ordinary development remains available while an h-file destination is forbidden.",
+  "initialFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "moves": [],
+  "allowedProbe": "g1f3",
+  "forbiddenProbe": "h2h3"
+}

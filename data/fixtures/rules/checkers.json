@@ -1,0 +1,8 @@
+{
+  "ruleId": "checkers",
+  "description": "The available pawn capture is forced over a quiet developing move.",
+  "initialFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "moves": ["e2e4", "d7d5"],
+  "requiredMove": "e4d5",
+  "forbiddenProbe": "g1f3"
+}

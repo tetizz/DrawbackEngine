@@ -1,0 +1,8 @@
+{
+  "ruleId": "conscientious-objectors",
+  "description": "The pawn may advance but cannot capture the opposing pawn.",
+  "initialFen": "4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1",
+  "moves": [],
+  "allowedProbe": "e4e5",
+  "forbiddenProbe": "e4d5"
+}

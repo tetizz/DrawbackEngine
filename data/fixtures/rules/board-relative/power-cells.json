@@ -1,0 +1,7 @@
+{
+  "ruleId": "power-cells",
+  "positionFen": "4k3/8/8/8/8/2N5/PP6/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["a2a3", "a2a4", "c3b5"],
+  "allowedMoves": ["a2a3", "a2a4"],
+  "forbiddenMoves": ["c3b5"]
+}

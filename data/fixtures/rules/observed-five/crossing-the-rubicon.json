@@ -1,0 +1,7 @@
+{
+  "ruleId": "crossing-the-rubicon",
+  "positionFen": "4k3/8/3R4/8/8/8/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["d6d5", "d6d4"],
+  "allowedMoves": ["d6d5"],
+  "forbiddenMoves": ["d6d4"]
+}

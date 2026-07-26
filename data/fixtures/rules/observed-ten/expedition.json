@@ -1,0 +1,8 @@
+{
+  "ruleId": "expedition",
+  "positionFen": "4k3/8/8/8/8/8/6B1/4K3 w - - 0 1",
+  "initialState": {"movesApplied": 14},
+  "ordinaryLegalMoves": ["g2f1", "g2h3"],
+  "allowedMoves": ["g2f1"],
+  "forbiddenMoves": ["g2h3"]
+}

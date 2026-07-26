@@ -1,0 +1,8 @@
+{
+  "ruleId": "horse-tranquilizer",
+  "description": "The knight may move quietly but cannot capture the pawn.",
+  "initialFen": "4k3/8/8/3p4/8/2N5/8/4K3 w - - 0 1",
+  "moves": [],
+  "allowedProbe": "c3b5",
+  "forbiddenProbe": "c3d5"
+}

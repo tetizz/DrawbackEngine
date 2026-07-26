@@ -1,0 +1,8 @@
+{
+  "ruleId": "truant",
+  "description": "A developed knight cannot move again on White's consecutive turn.",
+  "initialFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "moves": ["g1f3", "g8f6"],
+  "allowedProbe": "b1c3",
+  "forbiddenProbe": "f3g5"
+}

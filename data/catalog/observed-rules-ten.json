@@ -1,0 +1,77 @@
+[
+  {
+    "id": "expedition",
+    "name": "Expedition",
+    "description": "On the affected player's fifteenth turn, the primary move must end on f1.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "deadline forced destination",
+    "tests": ["packages/drawback-engine/src/rules/expedition.test.ts"],
+    "fixture": "data/fixtures/rules/observed-ten/expedition.json",
+    "ambiguities": [
+      "The single observed sample is treated as a fixed fifteenth affected-player turn and fixed f1 destination; it does not prove these are not hidden parameters.",
+      "Move counting is per affected player rather than the FIDE fullmove number.",
+      "If no ordinary legal move reaches f1, the generic no-drawback-legal-move loss applies although the observed wording does not explicitly say or lose."
+    ]
+  },
+  {
+    "id": "reflective",
+    "name": "Reflective",
+    "description": "A non-pawn primary mover may land only when the horizontally reflected destination square is occupied before the move.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "board symmetry occupancy",
+    "tests": ["packages/drawback-engine/src/rules/final-board-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-ten/reflective.json",
+    "ambiguities": [
+      "Center line means the horizontal line between ranks four and five, mapping a1 to a8; a vertical or rotational interpretation is possible.",
+      "Occupancy is evaluated in the pre-move position and either color counts.",
+      "Promotion is classified by its pawn mover and castling by the primary king destination."
+    ]
+  },
+  {
+    "id": "eye-of-sauron",
+    "name": "Eye of Sauron",
+    "description": "While a rook survives, non-pawn primary movers cannot advance beyond the farthest player-relative rank occupied or ordinarily reachable by an own rook.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "board-relative movement frontier",
+    "tests": ["packages/drawback-engine/src/rules/final-board-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-ten/eye-of-sauron.json",
+    "ambiguities": [
+      "Can see is interpreted as a rook's current square or an ordinary legal rook destination, not every pseudo-legal ray square.",
+      "All current rooks count, including promoted rooks; with no rook the restriction is inactive.",
+      "Pawns are exempt by the observed wording and promotion remains a pawn primary move."
+    ]
+  },
+  {
+    "id": "drag",
+    "name": "Drag",
+    "description": "The original queen moves one square at a time; if it is captured, the affected player loses.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement transformation and start-of-turn loss",
+    "tests": ["packages/drawback-engine/src/rules/final-tactical-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-ten/drag.json",
+    "ambiguities": [
+      "Your queen means the original queen, tracked from d1 or d8; promoted queens are unrestricted and do not replace it.",
+      "A queen is a king is interpreted as one-square king geometry but not royal attacked-square restrictions.",
+      "The captured-queen loss is evaluated at the beginning of its owner's next turn and exact reconstruction requires complete history from the standard start."
+    ]
+  },
+  {
+    "id": "ooh-shiny",
+    "name": "Ooh Shiny",
+    "description": "If any ordinary legal capture cannot be legally recaptured on its destination, one such capture is compulsory.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced safe capture",
+    "tests": ["packages/drawback-engine/src/rules/final-tactical-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-ten/ooh-shiny.json",
+    "ambiguities": [
+      "Recapture means an opponent standard-legal capture onto the capturing piece's destination; attacks by pinned pieces do not count.",
+      "A checking or mating capture with no legal recapture is safe.",
+      "If no safe capture exists, the restriction is inactive for that turn."
+    ]
+  }
+]

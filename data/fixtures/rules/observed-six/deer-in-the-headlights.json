@@ -1,0 +1,7 @@
+{
+  "ruleId": "deer-in-the-headlights",
+  "positionFen": "r3k3/8/8/8/8/2N5/R7/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["c3b5", "a2b2"],
+  "allowedMoves": ["c3b5"],
+  "forbiddenMoves": ["a2b2"]
+}

@@ -1,0 +1,8 @@
+{
+  "ruleId": "winds-of-fate",
+  "positionFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "parameters": {"seed": 0},
+  "ordinaryLegalMoves": ["e2e3", "g1f3", "g1h3"],
+  "allowedMoves": ["e2e3", "g1f3"],
+  "forbiddenMoves": ["g1h3"]
+}

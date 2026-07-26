@@ -1,0 +1,7 @@
+{
+  "ruleId": "bishop-fan-club",
+  "positionFen": "4k3/P7/8/8/8/8/8/3QK3 w - - 0 1",
+  "ordinaryLegalMoves": ["a7a8b", "a7a8q", "d1h5", "d1d2"],
+  "allowedMoves": ["a7a8b", "d1h5"],
+  "forbiddenMoves": ["a7a8q", "d1d2"]
+}

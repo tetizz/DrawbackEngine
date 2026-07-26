@@ -1,0 +1,6 @@
+{
+  "ruleId": "siege",
+  "positionFen": "4k3/8/8/8/8/8/8/4K3 w - - 0 21",
+  "historyByColor": {"white": 20, "black": 20},
+  "lossExpected": true
+}

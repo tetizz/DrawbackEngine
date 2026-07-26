@@ -1,0 +1,26 @@
+{
+  "ruleId": "royal-jubilee",
+  "positionFen": "4k3/R7/7p/8/8/8/3Q4/4K3 w - - 0 2",
+  "history": [
+    {
+      "from": "a1",
+      "to": "a7",
+      "color": "white",
+      "piece": "rook",
+      "captured": "bishop",
+      "san": "Rxa7",
+      "flags": "capture"
+    },
+    {
+      "from": "h7",
+      "to": "h6",
+      "color": "black",
+      "piece": "pawn",
+      "san": "h6",
+      "flags": "quiet"
+    }
+  ],
+  "ordinaryLegalMoves": ["d2d3", "a7a8"],
+  "allowedMoves": ["d2d3"],
+  "forbiddenMoves": ["a7a8"]
+}

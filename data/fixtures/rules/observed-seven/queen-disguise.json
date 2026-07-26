@@ -1,0 +1,8 @@
+{
+  "ruleId": "queen-disguise",
+  "positionFen": "k7/8/8/7Q/8/8/8/4K3 w - - 0 2",
+  "initialState": {"movesApplied": 1, "trackedSquare": "h5", "mode": "bishop"},
+  "ordinaryLegalMoves": ["h5g6", "h5h6"],
+  "allowedMoves": ["h5g6"],
+  "forbiddenMoves": ["h5h6"]
+}

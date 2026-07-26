@@ -1,0 +1,6 @@
+{
+  "ruleId": "edgelord",
+  "positionFen": "4k3/8/8/8/7r/8/4K3/8 w - - 0 1",
+  "lossExpected": true,
+  "historyByColor": {}
+}

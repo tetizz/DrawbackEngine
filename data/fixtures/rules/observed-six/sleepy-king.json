@@ -1,0 +1,7 @@
+{
+  "ruleId": "sleepy-king",
+  "positionFen": "4k3/8/8/8/8/8/8/3QK3 w - - 0 1",
+  "ordinaryLegalMoves": ["d1d2", "e1f1"],
+  "allowedMoves": ["d1d2"],
+  "forbiddenMoves": ["e1f1"]
+}

@@ -1,0 +1,7 @@
+{
+  "ruleId": "prince-charming",
+  "positionFen": "3r2k1/8/8/8/8/8/8/3QK1N1 w - - 0 1",
+  "ordinaryLegalMoves": ["g1f3", "d1d2"],
+  "allowedMoves": ["g1f3"],
+  "forbiddenMoves": ["d1d2"]
+}

@@ -1,0 +1,8 @@
+{
+  "ruleId": "comfort-zone",
+  "parameters": {"square": "d4"},
+  "positionFen": "4k3/8/8/8/8/5N2/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["f3d4", "f3h4"],
+  "allowedMoves": ["f3d4"],
+  "forbiddenMoves": ["f3h4"]
+}

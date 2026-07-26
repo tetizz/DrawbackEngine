@@ -1,0 +1,8 @@
+{
+  "ruleId": "shapeshifter",
+  "positionFen": "4k3/8/8/8/8/8/8/3QK3 w - - 0 1",
+  "initialState": {"movesApplied": 0, "trackedSquare": "d1", "mode": "bishop"},
+  "ordinaryLegalMoves": ["d1h5", "d1d3"],
+  "allowedMoves": ["d1h5"],
+  "forbiddenMoves": ["d1d3"]
+}

@@ -1,0 +1,240 @@
+{
+  "schemaVersion": 3,
+  "catalogId": "capturable-king-rules-v3",
+  "authorityId": "capturable-king/v1",
+  "migrationBoundary": {
+    "frozenCatalog": "data/catalog/observed-drawbacks.json",
+    "frozenPreparedClassCount": 182,
+    "reason": "These authority-complete rules require literal king-capture moves that standard-chess/v1 never generates. They remain outside the frozen v2 model vocabulary until an authority-aware v3 corpus and model migration is released."
+  },
+  "rules": [
+    {
+      "id": "femme-fatale",
+      "name": "Femme Fatale",
+      "observedDescription": "You can only capture their king with a queen",
+      "sourceEvidence": [
+        "Chess.com community glossary compiled by Truc1231",
+        "InvalidSE/DrawbackDetector pinned observation corpus: 3 observations"
+      ],
+      "authorityId": "capturable-king/v1",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "stateSchema": {
+        "type": "object",
+        "properties": {
+          "movesApplied": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "movesApplied"
+        ],
+        "additionalProperties": false
+      },
+      "implementationStatus": "implemented-unverified",
+      "ruleFamily": "forbidden terminal mover",
+      "tests": [
+        "packages/drawback-engine/src/rules/capturable-king-rules.test.ts",
+        "packages/chess-core/src/capturable-king-rules.integration.test.ts",
+        "packages/chess-core/src/public-game-trace.test.ts"
+      ],
+      "fixture": "data/fixtures/rules/capturable-king/femme-fatale.json",
+      "ambiguities": [
+        "Primary pre-move piece type controls: a pawn that promotes while capturing the king is not yet a queen and is rejected.",
+        "The source does not separately describe the authority's castling-en-passant king-capture edge; it is treated as a king capture and therefore requires a queen primary mover."
+      ]
+    },
+    {
+      "id": "nurturer",
+      "name": "Nurturer",
+      "observedDescription": "You can't capture their king until you've promoted a pawn",
+      "sourceEvidence": [
+        "Chess.com community glossary compiled by Truc1231",
+        "InvalidSE/DrawbackDetector pinned observation corpus: 8 observations"
+      ],
+      "authorityId": "capturable-king/v1",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "stateSchema": {
+        "type": "object",
+        "properties": {
+          "movesApplied": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasPromotedPawn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "movesApplied",
+          "hasPromotedPawn"
+        ],
+        "additionalProperties": false
+      },
+      "implementationStatus": "implemented-unverified",
+      "ruleFamily": "promotion history restriction",
+      "tests": [
+        "packages/drawback-engine/src/rules/capturable-king-rules.test.ts",
+        "packages/chess-core/src/capturable-king-rules.integration.test.ts",
+        "packages/chess-core/src/public-game-trace.test.ts"
+      ],
+      "fixture": "data/fixtures/rules/capturable-king/nurturer.json",
+      "ambiguities": [
+        "A promotion must complete before it unlocks king capture, so a capture-promotion of the king cannot satisfy its own prerequisite.",
+        "Promotion history is reconstructed from supplied affected-player move history; a preloaded promoted piece without complete history does not silently unlock the rule.",
+        "The unlock never resets if the promoted piece is later captured."
+      ]
+    },
+    {
+      "id": "triple-play",
+      "name": "Triple Play",
+      "observedDescription": "You can only capture their king if you have three (random piece)",
+      "sourceEvidence": [
+        "Chess.com community glossary compiled by Truc1231",
+        "InvalidSE/DrawbackDetector pinned observation corpus: 7 observations; five knight and two bishop parameter texts"
+      ],
+      "authorityId": "capturable-king/v1",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "requiredType": {
+            "type": "string",
+            "enum": [
+              "bishop",
+              "knight"
+            ]
+          }
+        },
+        "required": [
+          "requiredType"
+        ],
+        "additionalProperties": false
+      },
+      "stateSchema": {
+        "type": "object",
+        "properties": {
+          "movesApplied": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "movesApplied"
+        ],
+        "additionalProperties": false
+      },
+      "implementationStatus": "implemented-unverified",
+      "ruleFamily": "hidden piece type material threshold",
+      "tests": [
+        "packages/drawback-engine/src/rules/capturable-king-rules.test.ts",
+        "packages/chess-core/src/capturable-king-rules.integration.test.ts",
+        "packages/chess-core/src/public-game-trace.test.ts"
+      ],
+      "fixture": "data/fixtures/rules/capturable-king/triple-play.json",
+      "ambiguities": [
+        "The generated domain is limited to bishop and knight because those are the only parameter values in the pinned source-site observations; no other piece type is inferred.",
+        "Have three is provisionally interpreted as at least three rather than exactly three.",
+        "Material is counted on the pre-move board and promoted pieces count by current type, so a capture-promotion cannot become the third required piece during the king-capture move."
+      ]
+    },
+    {
+      "id": "you-best-not-miss",
+      "name": "You Best Not Miss",
+      "observedDescription": "If you end your turn checking your opponent, you must capture their king on the next move (or lose)",
+      "sourceEvidence": [
+        "Chess.com community glossary compiled by Truc1231",
+        "InvalidSE/DrawbackDetector pinned observation corpus: 3 observations"
+      ],
+      "authorityId": "capturable-king/v1",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "stateSchema": {
+        "type": "object",
+        "properties": {
+          "movesApplied": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mustCaptureKingNextTurn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "movesApplied",
+          "mustCaptureKingNextTurn"
+        ],
+        "additionalProperties": false
+      },
+      "implementationStatus": "implemented-unverified",
+      "ruleFamily": "delayed forced terminal response",
+      "tests": [
+        "packages/drawback-engine/src/rules/capturable-king-rules.test.ts",
+        "packages/chess-core/src/capturable-king-rules.integration.test.ts",
+        "packages/chess-core/src/public-game-trace.test.ts"
+      ],
+      "fixture": "data/fixtures/rules/capturable-king/you-best-not-miss.json",
+      "ambiguities": [
+        "Every geometric attack on the present opponent king triggers the delayed obligation; the wording does not say the future capture must already be guaranteed.",
+        "Next move means the next affected-player turn after the opponent reply.",
+        "If the opponent removes every king-capture reply, the shared zero-filter adjudication produces a start-of-turn drawback loss.",
+        "Arbitrary midgame reconstruction requires persisted rule state because current FEN plus move history cannot prove whether the affected player's prior move gave check before the opponent replied."
+      ]
+    },
+    {
+      "id": "irresistible",
+      "name": "Irresistible",
+      "observedDescription": "If you can move a piece adjacent to your opponent's king that isn't already, you must, except that you are always permitted to capture their king",
+      "sourceEvidence": [
+        "Chess.com community glossary compiled by Truc1231",
+        "InvalidSE/DrawbackDetector pinned observation corpus: 7 identical observations"
+      ],
+      "authorityId": "capturable-king/v1",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "stateSchema": {
+        "type": "object",
+        "properties": {
+          "movesApplied": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "movesApplied"
+        ],
+        "additionalProperties": false
+      },
+      "implementationStatus": "implemented-unverified",
+      "ruleFamily": "forced destination with terminal exception",
+      "tests": [
+        "packages/drawback-engine/src/rules/capturable-king-rules.test.ts",
+        "packages/chess-core/src/capturable-king-rules.integration.test.ts",
+        "packages/chess-core/src/public-game-trace.test.ts"
+      ],
+      "fixture": "data/fixtures/rules/capturable-king/irresistible.json",
+      "ambiguities": [
+        "Only a primary mover that was not adjacent before the move can satisfy the forced destination; moving an already-adjacent piece to another adjacent square does not trigger or satisfy the obligation.",
+        "Castling uses the primary king endpoints, promotion and en-passant use the primary pawn endpoints, and auxiliary rook or removed-pawn squares do not control adjacency.",
+        "Every literal authority-generated opposing-king capture remains legal even when one or more newly adjacent moves exist, including the one-reply castling-en-passant king-capture right."
+      ]
+    }
+  ]
+}

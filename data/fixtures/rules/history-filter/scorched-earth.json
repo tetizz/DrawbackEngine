@@ -1,0 +1,25 @@
+{
+  "ruleId": "scorched-earth",
+  "positionFen": "4k3/8/p7/8/8/2N5/1R6/4K3 w - - 0 2",
+  "history": [
+    {
+      "from": "b1",
+      "to": "c3",
+      "color": "white",
+      "piece": "knight",
+      "san": "Nc3",
+      "flags": "quiet"
+    },
+    {
+      "from": "a7",
+      "to": "a6",
+      "color": "black",
+      "piece": "pawn",
+      "san": "a6",
+      "flags": "quiet"
+    }
+  ],
+  "ordinaryLegalMoves": ["b2b3", "b2b1"],
+  "allowedMoves": ["b2b3"],
+  "forbiddenMoves": ["b2b1"]
+}

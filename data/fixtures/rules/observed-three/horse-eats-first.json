@@ -1,0 +1,7 @@
+{
+  "ruleId": "horse-eats-first",
+  "positionFen": "r3k3/8/8/3p4/8/2N5/8/R3K3 w - - 0 1",
+  "ordinaryLegalMoves": ["a1a8", "c3d5"],
+  "allowedMoves": ["c3d5"],
+  "forbiddenMoves": ["a1a8"]
+}

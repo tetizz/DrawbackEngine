@@ -1,0 +1,1 @@
+{"ruleId":"alternator","initialState":{"previousClass":null},"moves":[{"move":"e2e4","piece":"pawn","stateAfter":{"previousClass":false}},{"candidate":"d2d4","allowed":false},{"candidate":"g1f3","allowed":true}]}

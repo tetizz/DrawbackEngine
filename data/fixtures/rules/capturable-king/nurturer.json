@@ -1,0 +1,28 @@
+{
+  "ruleId": "nurturer",
+  "authorityId": "capturable-king/v1",
+  "seed": 3,
+  "initialFen": "4k3/Pp2R3/8/8/8/8/8/K7 w - - 0 1",
+  "moves": [
+    {
+      "from": "a7",
+      "to": "a8",
+      "promotion": "queen"
+    },
+    {
+      "from": "b7",
+      "to": "b6"
+    },
+    {
+      "from": "e7",
+      "to": "e8"
+    }
+  ],
+  "expectedWhiteParameters": {},
+  "expectedResult": {
+    "kind": "king-capture",
+    "winner": "white",
+    "capturedKing": "black",
+    "method": "direct"
+  }
+}

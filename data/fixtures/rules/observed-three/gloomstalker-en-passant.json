@@ -1,0 +1,7 @@
+{
+  "ruleId": "gloomstalker",
+  "positionFen": "4k3/8/8/4pP2/8/8/8/4K3 w - e6 0 1",
+  "ordinaryLegalMoves": ["f5e6"],
+  "allowedMoves": [],
+  "forbiddenMoves": ["f5e6"]
+}

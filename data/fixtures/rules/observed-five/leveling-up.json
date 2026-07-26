@@ -1,0 +1,8 @@
+{
+  "ruleId": "leveling-up",
+  "positionFen": "4k3/8/8/8/8/1pRn4/8/7K w - - 0 1",
+  "initialState": {"movesApplied":0,"captureLevel":0},
+  "ordinaryLegalMoves": ["c3b3", "c3d3"],
+  "allowedMoves": ["c3b3"],
+  "forbiddenMoves": ["c3d3"]
+}

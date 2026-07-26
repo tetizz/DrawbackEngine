@@ -1,0 +1,11 @@
+{
+  "ruleId": "boxing-with-shadow",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/1B6/8/8/4P3/4K3 w - - 0 1",
+  "history": [
+    {"color":"black","from":"c6","to":"d4","piece":"knight","san":"Nd4","flags":"quiet"}
+  ],
+  "ordinaryLegalMoves": ["b5c6", "e2e4"],
+  "allowedMoves": ["b5c6"],
+  "forbiddenMoves": ["e2e4"]
+}

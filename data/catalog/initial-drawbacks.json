@@ -1,0 +1,52 @@
+[
+  {
+    "id": "vegan",
+    "name": "Vegan",
+    "description": "Cannot capture an opposing knight.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-captured-piece",
+    "tests": ["packages/drawback-engine/src/rules/initial-rules.test.ts"],
+    "fixture": "data/fixtures/rules/vegan.json"
+  },
+  {
+    "id": "lame-duck",
+    "name": "Lame Duck",
+    "description": "Cannot make a move whose primary mover is the king.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-mover",
+    "tests": ["packages/drawback-engine/src/rules/initial-rules.test.ts"],
+    "fixture": "data/fixtures/rules/lame-duck.json"
+  },
+  {
+    "id": "checkers",
+    "name": "Checkers",
+    "description": "Must capture whenever an ordinary legal capture exists.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-capture",
+    "tests": ["packages/drawback-engine/src/rules/initial-rules.test.ts"],
+    "fixture": "data/fixtures/rules/checkers.json"
+  },
+  {
+    "id": "truant",
+    "name": "Truant",
+    "description": "Cannot move the same physical primary piece on consecutive turns.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "history-based-restriction",
+    "tests": ["packages/drawback-engine/src/rules/initial-rules.test.ts"],
+    "fixture": "data/fixtures/rules/truant.json"
+  },
+  {
+    "id": "spice-of-life",
+    "name": "Spice of Life",
+    "description": "Cannot move the same primary piece type on consecutive turns.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "piece-type-alternation",
+    "tests": ["packages/drawback-engine/src/rules/initial-rules.test.ts"],
+    "fixture": "data/fixtures/rules/spice-of-life.json"
+  }
+]

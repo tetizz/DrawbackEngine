@@ -1,0 +1,21 @@
+{
+  "ruleId": "triple-play",
+  "authorityId": "capturable-king/v1",
+  "seed": 0,
+  "initialFen": "4k3/4Q3/8/8/8/8/BBB5/K7 w - - 0 1",
+  "moves": [
+    {
+      "from": "e7",
+      "to": "e8"
+    }
+  ],
+  "expectedWhiteParameters": {
+    "requiredType": "bishop"
+  },
+  "expectedResult": {
+    "kind": "king-capture",
+    "winner": "white",
+    "capturedKing": "black",
+    "method": "direct"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "ruleId": "rook-on-the-seventh",
+  "positionFen": "4k3/8/R7/8/8/8/8/4K3 w - - 0 15",
+  "initialState": {"movesApplied": 14, "achieved": false},
+  "ordinaryLegalMoves": ["a6a7", "e1e2"],
+  "allowedMoves": ["a6a7"],
+  "forbiddenMoves": ["e1e2"]
+}

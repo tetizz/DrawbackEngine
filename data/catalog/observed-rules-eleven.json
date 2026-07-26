@@ -1,0 +1,38 @@
+[
+  {
+    "id": "bridge-over-troubled-water",
+    "name": "Bridge Over Troubled Water",
+    "description": "The middle two ranks are a river: primary movers cannot land in its water and line moves may cross between banks only through the d/e-file bridge.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "board terrain",
+    "tests": [
+      "packages/drawback-engine/src/rules/bridge-over-troubled-water.test.ts"
+    ],
+    "fixture": "data/fixtures/rules/observed-eleven/bridge-over-troubled-water.json",
+    "ambiguities": [
+      "The river is interpreted as ranks four and five, and the bridge as the four d/e-file squares in those ranks.",
+      "Bridge squares are landable; the other twelve river squares are water and cannot be primary destinations.",
+      "A rook, bishop, or queen crossing completely between banks must traverse the river only on files d/e. Other pieces use their primary destination.",
+      "Only the primary mover is constrained for castling, and promotion and en-passant use the pawn destination."
+    ]
+  },
+  {
+    "id": "reconnaissance",
+    "name": "Reconnaissance",
+    "description": "Captures are allowed only against piece types studied as ordinary legal capture targets on an earlier affected-player turn.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-type learning",
+    "tests": [
+      "packages/drawback-engine/src/rules/reconnaissance.test.ts"
+    ],
+    "fixture": "data/fixtures/rules/observed-eleven/reconnaissance.json",
+    "ambiguities": [
+      "A target type becomes unlocked after completing a turn on which at least one standard-legal capture of that type was available, so it cannot be captured on the first study turn.",
+      "Study uses standard-legal rather than pseudo-legal captures and persists for the rest of the game.",
+      "Capturing promotions are classified by the captured target type; en-passant studies and captures pawns.",
+      "Exact initialization from an arbitrary midgame move list is impossible because unplayed historical capture opportunities are absent; chronological play from the game start is exact."
+    ]
+  }
+]

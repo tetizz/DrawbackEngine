@@ -1,0 +1,7 @@
+{
+  "ruleId": "unrequited-love",
+  "positionFen": "4k3/8/8/8/8/8/8/3QK3 w - - 0 1",
+  "ordinaryLegalMoves": ["e1d2", "e1f2"],
+  "allowedMoves": ["e1d2"],
+  "forbiddenMoves": ["e1f2"]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@drawbackengine/chess-evaluator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./completed-pgn-sidecar": {
+      "types": "./dist/completed-pgn-sidecar.d.ts",
+      "import": "./dist/completed-pgn-sidecar.js"
+    }
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@drawbackengine/chess-core": "workspace:*",
+    "@drawbackengine/drawback-search": "workspace:*",
+    "@drawbackengine/drawback-engine": "workspace:*",
+    "chess.js": "^1.4.0"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "ruleId": "eye-for-an-eye",
+  "description": "White's pawn capture obliges Black to answer with a capture.",
+  "initialFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "moves": ["e2e4", "d7d5", "e4d5"],
+  "requiredMove": "d8d5",
+  "forbiddenProbe": "g8f6"
+}

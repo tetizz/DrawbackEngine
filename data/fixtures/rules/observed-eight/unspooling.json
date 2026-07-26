@@ -1,0 +1,8 @@
+{
+  "ruleId": "unspooling",
+  "positionFen": "4k3/8/8/8/8/8/8/R3K3 w - - 0 21",
+  "initialState": {"movesApplied": 20, "distanceUsed": 99},
+  "ordinaryLegalMoves": ["a1a2", "a1a3"],
+  "allowedMoves": ["a1a2"],
+  "forbiddenMoves": ["a1a3"]
+}

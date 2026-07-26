@@ -1,0 +1,6 @@
+{
+  "ruleId": "moving-day",
+  "positionFen": "4k3/8/8/8/8/8/8/R3K3 w - - 0 21",
+  "historyByColor": {"white": 20, "black": 20},
+  "lossExpected": true
+}

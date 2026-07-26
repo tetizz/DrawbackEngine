@@ -1,0 +1,7 @@
+{
+  "ruleId": "spread-out",
+  "positionFen": "4k3/8/4B3/8/P7/2N5/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["c3d5", "c3b5", "a4a5"],
+  "allowedMoves": ["c3b5", "a4a5"],
+  "forbiddenMoves": ["c3d5"]
+}

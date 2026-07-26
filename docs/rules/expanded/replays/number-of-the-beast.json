@@ -1,0 +1,8 @@
+{
+  "ruleId": "number-of-the-beast",
+  "description": "A quiet development move remains available while a sixth-rank destination is removed.",
+  "positionFen": "k7/8/8/6R1/8/8/8/7K w - - 0 1",
+  "ordinaryLegalMoves": ["g5g4", "g5g1", "g5g6"],
+  "allowedMoves": ["g5g4", "g5g1"],
+  "forbiddenMoves": ["g5g6"]
+}

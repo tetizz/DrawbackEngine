@@ -1,0 +1,7 @@
+{
+  "ruleId": "thunderdome",
+  "positionFen": "4k3/8/8/5n2/3R4/8/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["d4d5", "d4d2"],
+  "allowedMoves": ["d4d5"],
+  "forbiddenMoves": ["d4d2"]
+}

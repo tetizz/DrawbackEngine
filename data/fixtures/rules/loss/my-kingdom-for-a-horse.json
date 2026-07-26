@@ -1,0 +1,16 @@
+{
+  "ruleId": "my-kingdom-for-a-horse",
+  "positionFen": "4k3/8/8/8/8/8/8/4K1N1 w - - 0 1",
+  "lossExpected": true,
+  "history": [
+    {
+      "from": "c6",
+      "to": "d4",
+      "color": "black",
+      "piece": "bishop",
+      "captured": "knight",
+      "san": "Bxd4",
+      "flags": "capture"
+    }
+  ]
+}

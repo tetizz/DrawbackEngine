@@ -1,0 +1,26 @@
+{
+  "ruleId": "turn-the-other-cheek",
+  "positionFen": "4k3/8/8/8/4n3/3Q4/8/4K3 w - - 0 2",
+  "history": [
+    {
+      "from": "e2",
+      "to": "e4",
+      "color": "white",
+      "piece": "pawn",
+      "san": "e4",
+      "flags": "quiet"
+    },
+    {
+      "from": "f6",
+      "to": "e4",
+      "color": "black",
+      "piece": "knight",
+      "captured": "pawn",
+      "san": "Nxe4",
+      "flags": "capture"
+    }
+  ],
+  "ordinaryLegalMoves": ["d3d4", "d3e4"],
+  "allowedMoves": ["d3d4"],
+  "forbiddenMoves": ["d3e4"]
+}

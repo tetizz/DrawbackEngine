@@ -1,0 +1,7 @@
+{
+  "ruleId": "social-distancing",
+  "positionFen": "4k3/8/4p3/8/4p3/2N5/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["c3d5", "c3b5", "c3e4"],
+  "allowedMoves": ["c3b5", "c3e4"],
+  "forbiddenMoves": ["c3d5"]
+}

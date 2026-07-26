@@ -1,0 +1,8 @@
+{
+  "ruleId": "absolution",
+  "positionFen": "4k3/8/8/3p4/3R4/8/8/4K3 w - - 0 1",
+  "initialState": {"movesApplied":1,"dirtyPieces":[{"square":"d4","type":"rook"}]},
+  "ordinaryLegalMoves": ["d4d5", "d4d3"],
+  "allowedMoves": ["d4d3"],
+  "forbiddenMoves": ["d4d5"]
+}

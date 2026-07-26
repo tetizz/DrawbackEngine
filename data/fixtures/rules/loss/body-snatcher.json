@@ -1,0 +1,25 @@
+{
+  "ruleId": "body-snatcher",
+  "positionFen": "4k3/8/8/8/8/8/8/4K3 w - - 0 1",
+  "lossExpected": true,
+  "history": [
+    {
+      "from": "c6",
+      "to": "d4",
+      "color": "black",
+      "piece": "knight",
+      "captured": "knight",
+      "san": "Nxd4",
+      "flags": "capture"
+    },
+    {
+      "from": "e6",
+      "to": "d5",
+      "color": "black",
+      "piece": "bishop",
+      "captured": "pawn",
+      "san": "Bxd5",
+      "flags": "capture"
+    }
+  ]
+}

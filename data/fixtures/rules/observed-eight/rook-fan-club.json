@@ -1,0 +1,7 @@
+{
+  "ruleId": "rook-fan-club",
+  "positionFen": "4k3/P7/8/8/8/8/8/3QK3 w - - 0 1",
+  "ordinaryLegalMoves": ["a7a8r", "a7a8b", "d1d2", "d1h5"],
+  "allowedMoves": ["a7a8r", "d1d2"],
+  "forbiddenMoves": ["a7a8b", "d1h5"]
+}

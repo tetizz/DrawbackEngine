@@ -1,0 +1,1 @@
+{"ruleId":"bipartisanship","positionFen":"4k3/8/8/8/8/8/8/1R2K3 w - - 0 1","initialState":{"previousHorizontalDirection":1},"history":["a1b1"],"ordinaryLegalMoves":["b1c1","b1a1","b1b2"],"allowedMoves":["b1a1","b1b2"],"forbiddenMoves":["b1c1"]}

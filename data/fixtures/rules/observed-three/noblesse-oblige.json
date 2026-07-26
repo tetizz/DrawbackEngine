@@ -1,0 +1,7 @@
+{
+  "ruleId": "noblesse-oblige",
+  "positionFen": "4k3/3r4/8/7q/8/8/8/3QK3 w - - 0 1",
+  "ordinaryLegalMoves": ["d1d7", "d1h5"],
+  "allowedMoves": ["d1h5"],
+  "forbiddenMoves": ["d1d7"]
+}

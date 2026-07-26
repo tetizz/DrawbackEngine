@@ -1,0 +1,11 @@
+{
+  "ruleId": "cowardly",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/3R4/8/8/4K3 w - - 0 1",
+  "history": [
+    {"color":"black","from":"c6","to":"d4","piece":"knight","captured":"pawn","san":"Nxd4","flags":"capture"}
+  ],
+  "ordinaryLegalMoves": ["d4d3", "d4d5"],
+  "allowedMoves": ["d4d3"],
+  "forbiddenMoves": ["d4d5"]
+}

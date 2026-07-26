@@ -1,0 +1,11 @@
+{
+  "ruleId": "gambler",
+  "parameters": {
+    "seed": 123456789
+  },
+  "description": "The hidden seed reproduces the same forbidden piece-type sequence.",
+  "initialFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "turnIndex": 0,
+  "sequenceContract": "hiddenPieceTypeForTurn(parameters, { movesApplied: turnIndex })",
+  "replayTurns": 16
+}

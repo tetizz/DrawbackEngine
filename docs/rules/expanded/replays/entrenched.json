@@ -1,0 +1,8 @@
+{
+  "ruleId": "entrenched",
+  "description": "A rook may travel two squares but not three.",
+  "positionFen": "7k/8/8/8/8/8/8/R6K w - - 0 1",
+  "ordinaryLegalMoves": ["a1a2", "a1a3", "a1a4"],
+  "allowedMoves": ["a1a2", "a1a3"],
+  "forbiddenMoves": ["a1a4"]
+}

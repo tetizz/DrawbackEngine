@@ -1,0 +1,7 @@
+{
+  "ruleId": "noble-steed",
+  "positionFen": "4k3/8/8/8/8/8/1N6/R3K2R w - - 0 1",
+  "ordinaryLegalMoves": ["a1a2", "h1h2", "b2c4"],
+  "allowedMoves": ["a1a2", "b2c4"],
+  "forbiddenMoves": ["h1h2"]
+}

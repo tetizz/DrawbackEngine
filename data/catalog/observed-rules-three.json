@@ -1,0 +1,167 @@
+[
+  {
+    "id": "lucky",
+    "name": "Lucky",
+    "description": "No drawback.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "identity",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/observed-three/lucky.json",
+    "ambiguities": ["Lucky is a distinct observable label even though its legal move set is ordinary chess."]
+  },
+  {
+    "id": "eisoptrophobia",
+    "name": "Eisoptrophobia",
+    "description": "A piece cannot capture an opposing piece of the same type.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-captured-piece",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/observed-three/eisoptrophobia.json",
+    "ambiguities": ["Promotion is classified by the pre-move pawn; en-passant captures a pawn."]
+  },
+  {
+    "id": "gloomstalker",
+    "name": "Gloomstalker",
+    "description": "Captures may only be made from dark squares.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-origin",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/observed-three/gloomstalker.json",
+    "ambiguities": ["Dark squares use standard chessboard coloring with a1 dark."]
+  },
+  {
+    "id": "noblesse-oblige",
+    "name": "Noblesse Oblige",
+    "description": "Kings and queens may capture only kings or queens.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-captured-piece",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/observed-three/noblesse-oblige.json",
+    "ambiguities": ["Standard chess never represents king capture as an ordinary legal move."]
+  },
+  {
+    "id": "bongcloud",
+    "name": "Bongcloud",
+    "description": "While the king is on its color-relative back rank, only pawns and kings may move.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "conditional-forbidden-mover",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/observed-three/bongcloud.json",
+    "ambiguities": ["Castling is a king move and remains permitted when standard-legal."]
+  },
+  {
+    "id": "eat-your-vegetables",
+    "name": "Eat Your Vegetables",
+    "description": "Until the opponent has at most four pawns, only pawns may be captured.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "conditional-forbidden-capture",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/observed-three/eat-your-vegetables.json",
+    "ambiguities": ["The restriction lifts at four remaining opposing pawns, matching the wording 'only has 4'."]
+  },
+  {
+    "id": "horse-eats-first",
+    "name": "Horse Eats First",
+    "description": "While the affected player has a knight, only knights may capture.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "conditional-forbidden-capturer",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/observed-three/horse-eats-first.json",
+    "ambiguities": ["A promoted knight counts as a current knight."]
+  },
+  {
+    "id": "messy-divorce",
+    "name": "Messy Divorce",
+    "description": "Pieces cannot cross between queenside files a-d and kingside files e-h.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-destination",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/observed-three/messy-divorce.json",
+    "ambiguities": ["Queenside and kingside are interpreted as files a-d and e-h; kingside castling stays within e-h, while queenside castling crosses the boundary and is forbidden."]
+  },
+  {
+    "id": "body-snatcher",
+    "name": "Body Snatcher",
+    "description": "Lose when the opponent captures a non-pawn piece with an equivalent piece.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-history-loss",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/loss/body-snatcher.json",
+    "ambiguities": ["Piece equivalence uses current mover and captured types."]
+  },
+  {
+    "id": "castle-doctrine",
+    "name": "Castle Doctrine",
+    "description": "Lose when the opponent captures a rook.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-history-loss",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/loss/castle-doctrine.json",
+    "ambiguities": ["Promoted rooks count by current captured type."]
+  },
+  {
+    "id": "my-kingdom-for-a-horse",
+    "name": "My Kingdom for a Horse",
+    "description": "Lose when the opponent captures a knight.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-history-loss",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/loss/my-kingdom-for-a-horse.json",
+    "ambiguities": ["Promoted knights count by current captured type."]
+  },
+  {
+    "id": "octomom",
+    "name": "Octomom",
+    "description": "Lose after the opponent captures eight pieces.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-count-loss",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/loss/octomom.json",
+    "ambiguities": ["Every captured piece, including pawns, counts; standard chess never captures kings."]
+  },
+  {
+    "id": "pawn-battle",
+    "name": "Pawn Battle",
+    "description": "Lose when holding fewer pawns than the opponent.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "material-comparison-loss",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/loss/pawn-battle.json",
+    "ambiguities": ["Promoted pieces no longer count as pawns."]
+  },
+  {
+    "id": "edgelord",
+    "name": "Edgelord",
+    "description": "Lose when holding fewer pieces on the rim than the opponent.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "board-terrain-loss",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/loss/edgelord.json",
+    "ambiguities": ["The rim is the outside files a/h and ranks 1/8; all piece types count."]
+  },
+  {
+    "id": "botez-gambit",
+    "name": "Botez Gambit",
+    "description": "At the start of turn eleven, have no queen while the opponent has a queen.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "deadline-loss",
+    "tests": ["packages/drawback-engine/src/rules/observed-rules-three.test.ts"],
+    "fixture": "data/fixtures/rules/loss/botez-gambit.json",
+    "ambiguities": ["Turn eleven is standard FEN fullmove 11 and is checked once for each color; promoted queens count."]
+  }
+]

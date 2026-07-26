@@ -1,0 +1,8 @@
+{
+  "ruleId": "drag",
+  "positionFen": "4k3/8/8/8/8/8/4P3/3QK3 w - - 0 1",
+  "initialState": {"movesApplied": 0, "queenSquare": "d1"},
+  "ordinaryLegalMoves": ["d1c2", "d1d7", "e2e3"],
+  "allowedMoves": ["d1c2", "e2e3"],
+  "forbiddenMoves": ["d1d7"]
+}

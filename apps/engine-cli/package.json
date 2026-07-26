@@ -1,0 +1,35 @@
+{
+  "name": "@drawbackengine/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "drawback-engine": "./dist/cli.js"
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "batch": "tsx src/batch-cli.ts",
+    "demo": "tsx src/cli.ts",
+    "oracle:move": "tsx src/drawback-engine-cli.ts",
+    "parallel": "tsx src/parallel-cli.ts",
+    "pgn:evaluator-sidecar": "tsx src/pgn-evaluator-sidecar-cli.ts",
+    "start": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@drawbackengine/chess-core": "workspace:*",
+    "@drawbackengine/chess-evaluator": "workspace:*",
+    "@drawbackengine/drawback-search": "workspace:*",
+    "@drawbackengine/drawback-engine": "workspace:*",
+    "@drawbackengine/simulation-arena": "workspace:*",
+    "@drawbackengine/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "tsx": "^4.20.3"
+  }
+}

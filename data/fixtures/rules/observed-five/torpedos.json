@@ -1,0 +1,11 @@
+{
+  "ruleId": "torpedos",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/4P3/8/P7/4K3 w - - 0 1",
+  "history": [
+    {"color":"white","from":"e2","to":"e4","piece":"pawn","san":"e4","flags":"double-pawn"}
+  ],
+  "ordinaryLegalMoves": ["e4e5", "a2a3"],
+  "allowedMoves": ["e4e5"],
+  "forbiddenMoves": ["a2a3"]
+}

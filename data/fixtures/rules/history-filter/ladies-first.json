@@ -1,0 +1,25 @@
+{
+  "ruleId": "ladies-first",
+  "positionFen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2",
+  "history": [
+    {
+      "from": "e2",
+      "to": "e4",
+      "color": "white",
+      "piece": "pawn",
+      "san": "e4",
+      "flags": "quiet"
+    },
+    {
+      "from": "d7",
+      "to": "d5",
+      "color": "black",
+      "piece": "pawn",
+      "san": "d5",
+      "flags": "quiet"
+    }
+  ],
+  "ordinaryLegalMoves": ["g1f3", "e1e2"],
+  "allowedMoves": ["g1f3"],
+  "forbiddenMoves": ["e1e2"]
+}

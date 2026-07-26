@@ -1,0 +1,1 @@
+{"ruleId":"out-of-breath","initialState":{"kingMoves":0},"moves":[{"move":"e1g1","stateAfter":{"kingMoves":1}},{"candidate":"g1h1","allowed":false}]}

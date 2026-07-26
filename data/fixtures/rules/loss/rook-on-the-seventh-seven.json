@@ -1,0 +1,6 @@
+{
+  "ruleId": "rook-on-the-seventh",
+  "positionFen": "4k3/8/8/8/8/8/8/4K3 w - - 0 16",
+  "historyByColor": {"white": 15, "black": 15},
+  "lossExpected": true
+}

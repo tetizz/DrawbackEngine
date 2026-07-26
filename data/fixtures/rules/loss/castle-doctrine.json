@@ -1,0 +1,16 @@
+{
+  "ruleId": "castle-doctrine",
+  "positionFen": "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
+  "lossExpected": true,
+  "history": [
+    {
+      "from": "a8",
+      "to": "a1",
+      "color": "black",
+      "piece": "rook",
+      "captured": "rook",
+      "san": "Rxa1",
+      "flags": "capture"
+    }
+  ]
+}

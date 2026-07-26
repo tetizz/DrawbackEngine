@@ -1,0 +1,7 @@
+{
+  "ruleId": "royal-berth",
+  "positionFen": "4k3/8/8/8/8/2B5/R7/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["a2e2", "a2a3", "e1d2", "e1f1"],
+  "allowedMoves": ["a2a3", "e1f1"],
+  "forbiddenMoves": ["a2e2", "e1d2"]
+}

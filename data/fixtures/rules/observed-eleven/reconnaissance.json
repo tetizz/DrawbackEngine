@@ -1,0 +1,11 @@
+{
+  "ruleId": "reconnaissance",
+  "positionFen": "4k3/3p4/8/8/r2Q4/8/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["d4d7", "d4a4", "d4d5"],
+  "allowedMoves": ["d4d7", "d4d5"],
+  "forbiddenMoves": ["d4a4"],
+  "initialState": {
+    "movesApplied": 1,
+    "unlockedCapturedTypes": ["pawn"]
+  }
+}

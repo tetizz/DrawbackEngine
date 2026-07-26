@@ -1,0 +1,7 @@
+{
+  "ruleId": "bridge-over-troubled-water",
+  "positionFen": "4k3/8/8/8/8/R2R4/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["a3a6", "d3d6", "e1e2"],
+  "allowedMoves": ["d3d6", "e1e2"],
+  "forbiddenMoves": ["a3a6"]
+}

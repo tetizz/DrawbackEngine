@@ -1,0 +1,11 @@
+{
+  "ruleId": "religious-dispute",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/8/8/P7/2B1K3 w - - 0 1",
+  "history": [
+    {"color":"black","from":"c8","to":"f5","piece":"bishop","san":"Bf5","flags":"quiet"}
+  ],
+  "ordinaryLegalMoves": ["c1g5", "a2a3"],
+  "allowedMoves": ["c1g5"],
+  "forbiddenMoves": ["a2a3"]
+}

@@ -1,0 +1,8 @@
+{
+  "ruleId": "fischer-random",
+  "positionFen": "4k3/8/8/8/8/8/8/3K4 w - - 0 20",
+  "initialState": {"movesApplied": 19},
+  "ordinaryLegalMoves": ["d1c1", "d1d2"],
+  "allowedMoves": ["d1c1"],
+  "forbiddenMoves": ["d1d2"]
+}

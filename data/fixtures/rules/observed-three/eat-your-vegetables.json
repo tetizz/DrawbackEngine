@@ -1,0 +1,7 @@
+{
+  "ruleId": "eat-your-vegetables",
+  "positionFen": "4k3/ppppp3/8/1p1r4/8/2N5/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["c3b5", "c3d5"],
+  "allowedMoves": ["c3b5"],
+  "forbiddenMoves": ["c3d5"]
+}

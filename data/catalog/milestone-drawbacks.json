@@ -1,0 +1,153 @@
+[
+  {
+    "id": "true-gentleman",
+    "name": "True Gentleman",
+    "description": "Cannot capture an opposing queen.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-captured-piece",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/true-gentleman.json"
+  },
+  {
+    "id": "false-prophets",
+    "name": "False Prophets",
+    "description": "Bishops cannot capture.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-mover",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/false-prophets.json",
+    "ambiguities": []
+  },
+  {
+    "id": "trophy-wife",
+    "name": "Trophy Wife",
+    "description": "The player's queen cannot capture.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-mover-capture",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/trophy-wife.json"
+  },
+  {
+    "id": "cess",
+    "name": "Cess",
+    "description": "Cannot move the primary mover to the h-file.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-destination",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/cess.json"
+  },
+  {
+    "id": "forward-march",
+    "name": "Forward March",
+    "description": "Cannot move the primary mover backwards toward its home rank.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-destination",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/forward-march.json"
+  },
+  {
+    "id": "pacman",
+    "name": "Pacman",
+    "description": "Must capture a pawn when an ordinary legal pawn capture exists.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-capture",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/pacman.json"
+  },
+  {
+    "id": "oddball",
+    "name": "Oddball",
+    "description": "Captures are permitted only on odd standard fullmove numbers.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "move-parity",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/oddball.json"
+  },
+  {
+    "id": "even-keeled",
+    "name": "Even Keeled",
+    "description": "Captures are permitted only on even standard fullmove numbers.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "move-parity",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/even-keeled.json"
+  },
+  {
+    "id": "quit-horsing-around",
+    "name": "Quit Horsing Around",
+    "description": "After moving a knight, cannot move any knight on the next turn.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "piece-type-alternation",
+    "tests": ["packages/drawback-engine/src/rules/stateful-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/quit-horsing-around.json"
+  },
+  {
+    "id": "remorseful",
+    "name": "Remorseful",
+    "description": "Cannot capture on two consecutive turns.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-cooldown",
+    "tests": ["packages/drawback-engine/src/rules/stateful-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/remorseful.json"
+  },
+  {
+    "id": "battle-fatigue",
+    "name": "Battle Fatigue",
+    "description": "A piece that captures cannot capture again until it makes a non-capturing move.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-cooldown",
+    "tests": ["packages/drawback-engine/src/rules/stateful-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/battle-fatigue.json"
+  },
+  {
+    "id": "eye-for-an-eye",
+    "name": "Eye for an Eye",
+    "description": "After the opponent captures, must capture on the next turn or lose.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-response",
+    "tests": ["packages/drawback-engine/src/rules/stateful-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/eye-for-an-eye.json"
+  },
+  {
+    "id": "barbarian-rage",
+    "name": "Barbarian Rage",
+    "description": "After capturing, must capture on the next turn if able.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "history-based-forced-capture",
+    "tests": ["packages/drawback-engine/src/rules/stateful-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/barbarian-rage.json"
+  },
+  {
+    "id": "conscientious-objectors",
+    "name": "Conscientious Objectors",
+    "description": "Pawns cannot capture.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-mover-capture",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/conscientious-objectors.json"
+  },
+  {
+    "id": "horse-tranquilizer",
+    "name": "Horse Tranquilizer",
+    "description": "Knights cannot capture.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-mover-capture",
+    "tests": ["packages/drawback-engine/src/rules/declarative-milestone.test.ts"],
+    "fixture": "data/fixtures/rules/milestone/horse-tranquilizer.json"
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "ruleId": "cowering-in-fear",
+  "positionFen": "4k3/8/8/8/8/8/8/RN2K3 w - - 0 2",
+  "history": [
+    {
+      "from": "g7",
+      "to": "a1",
+      "color": "black",
+      "piece": "bishop",
+      "captured": "rook",
+      "san": "Bxa1",
+      "flags": "capture"
+    }
+  ],
+  "ordinaryLegalMoves": ["a1a2", "b1c3"],
+  "allowedMoves": ["a1a2"],
+  "forbiddenMoves": ["b1c3"]
+}

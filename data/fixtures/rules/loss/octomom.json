@@ -1,0 +1,15 @@
+{
+  "ruleId": "octomom",
+  "positionFen": "4k3/8/8/8/8/8/PPPPPPPP/4K3 w - - 0 1",
+  "lossExpected": true,
+  "history": [
+    { "from": "a8", "to": "a1", "color": "black", "piece": "rook", "captured": "pawn", "san": "Rxa1", "flags": "capture" },
+    { "from": "a7", "to": "a2", "color": "black", "piece": "rook", "captured": "pawn", "san": "Rxa2", "flags": "capture" },
+    { "from": "a6", "to": "a3", "color": "black", "piece": "rook", "captured": "pawn", "san": "Rxa3", "flags": "capture" },
+    { "from": "a5", "to": "a4", "color": "black", "piece": "rook", "captured": "pawn", "san": "Rxa4", "flags": "capture" },
+    { "from": "h8", "to": "h1", "color": "black", "piece": "rook", "captured": "pawn", "san": "Rxh1", "flags": "capture" },
+    { "from": "h7", "to": "h2", "color": "black", "piece": "rook", "captured": "pawn", "san": "Rxh2", "flags": "capture" },
+    { "from": "h6", "to": "h3", "color": "black", "piece": "rook", "captured": "pawn", "san": "Rxh3", "flags": "capture" },
+    { "from": "h5", "to": "h4", "color": "black", "piece": "rook", "captured": "pawn", "san": "Rxh4", "flags": "capture" }
+  ]
+}

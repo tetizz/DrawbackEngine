@@ -1,0 +1,8 @@
+{
+  "ruleId": "rising-water",
+  "positionFen": "4k3/8/8/8/8/8/R7/R3K3 w - - 0 11",
+  "initialState": {"movesApplied": 10},
+  "ordinaryLegalMoves": ["a2a3", "a1b1"],
+  "allowedMoves": ["a2a3"],
+  "forbiddenMoves": ["a1b1"]
+}

@@ -1,0 +1,33 @@
+{
+  "ruleId": "velociraptor",
+  "positionFen": "4k3/3n4/8/8/r2Q4/8/8/4K3 w - - 0 4",
+  "history": [
+    {
+      "from": "a7",
+      "to": "a6",
+      "color": "black",
+      "piece": "pawn",
+      "san": "a6",
+      "flags": "quiet"
+    },
+    {
+      "from": "c8",
+      "to": "g4",
+      "color": "black",
+      "piece": "bishop",
+      "san": "Bg4",
+      "flags": "quiet"
+    },
+    {
+      "from": "b8",
+      "to": "d7",
+      "color": "black",
+      "piece": "knight",
+      "san": "Nd7",
+      "flags": "quiet"
+    }
+  ],
+  "ordinaryLegalMoves": ["d4d7", "d4a4"],
+  "allowedMoves": ["d4d7"],
+  "forbiddenMoves": ["d4a4"]
+}

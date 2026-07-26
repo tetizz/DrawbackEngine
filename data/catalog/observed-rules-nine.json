@@ -1,0 +1,90 @@
+[
+  {
+    "id": "colorblind",
+    "name": "Colorblind",
+    "description": "One destination-square color is forbidden and independently rerandomized each affected-player turn.",
+    "parameterSchema": {
+      "type": "object",
+      "properties": {
+        "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      },
+      "required": ["seed"],
+      "additionalProperties": false
+    },
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "random-per-turn forbidden destination",
+    "tests": ["packages/drawback-engine/src/rules/rerandomized-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-nine/colorblind.json",
+    "ambiguities": [
+      "The random choice is stable throughout one affected-player turn and advances after that player's move.",
+      "If every ordinary legal move lands on the forbidden color, the generic no-drawback-legal-move loss applies.",
+      "Castling, promotion, and en-passant are classified by the primary piece's destination square."
+    ]
+  },
+  {
+    "id": "hand-and-brainless",
+    "name": "Hand and Brainless",
+    "description": "One required primary mover type is independently rerandomized each affected-player turn.",
+    "parameterSchema": {
+      "type": "object",
+      "properties": {
+        "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      },
+      "required": ["seed"],
+      "additionalProperties": false
+    },
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "random-per-turn forced mover",
+    "tests": ["packages/drawback-engine/src/rules/rerandomized-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-nine/hand-and-brainless.json",
+    "ambiguities": [
+      "Piece includes pawns and the king, producing six approximately uniform primary mover types from a deterministic uint32 mapping.",
+      "The literal must-move interpretation has no fallback when the selected type has no ordinary legal move; the generic no-drawback-legal-move loss then applies.",
+      "Promotions are pawn moves and castling is a king move."
+    ]
+  },
+  {
+    "id": "obsession",
+    "name": "Obsession",
+    "description": "One target square is rerandomized each affected-player turn; if any ordinary move reaches it, one of those moves is required.",
+    "parameterSchema": {
+      "type": "object",
+      "properties": {
+        "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      },
+      "required": ["seed"],
+      "additionalProperties": false
+    },
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "random-per-turn forced destination",
+    "tests": ["packages/drawback-engine/src/rules/rerandomized-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-nine/obsession.json",
+    "ambiguities": [
+      "All 64 squares are sampled uniformly, including occupied and unreachable squares.",
+      "When no ordinary legal move reaches the sampled square, the restriction is inactive for that turn.",
+      "All legal promotion choices reaching the target remain available."
+    ]
+  },
+  {
+    "id": "winds-of-fate",
+    "name": "Winds of Fate",
+    "description": "Either player-relative leftward or rightward primary movement is forbidden and independently rerandomized each affected-player turn.",
+    "parameterSchema": {
+      "type": "object",
+      "properties": {
+        "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      },
+      "required": ["seed"],
+      "additionalProperties": false
+    },
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "random-per-turn forbidden direction",
+    "tests": ["packages/drawback-engine/src/rules/rerandomized-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-nine/winds-of-fate.json",
+    "ambiguities": [
+      "Left and right are interpreted from the affected player's perspective, so file direction is mirrored for Black.",
+      "Moves with no horizontal displacement remain legal.",
+      "Castling, promotion, and en-passant use the primary piece's from-to file displacement."
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "ruleId": "guerilla-tactics",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/3N4/8/P7/4K3 w - - 0 1",
+  "history": [
+    {"color":"white","from":"c2","to":"d4","piece":"knight","captured":"pawn","san":"Nxd4","flags":"capture"}
+  ],
+  "ordinaryLegalMoves": ["d4c2", "a2a3"],
+  "allowedMoves": ["d4c2"],
+  "forbiddenMoves": ["a2a3"]
+}

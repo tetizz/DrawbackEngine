@@ -1,0 +1,8 @@
+{
+  "ruleId": "blinded-by-the-sun",
+  "positionFen": "4k3/8/8/8/8/8/8/3RK3 w - - 0 1",
+  "parameters": {"square": "d4"},
+  "ordinaryLegalMoves": ["d1d2", "d1c1"],
+  "allowedMoves": ["d1c1"],
+  "forbiddenMoves": ["d1d2"]
+}

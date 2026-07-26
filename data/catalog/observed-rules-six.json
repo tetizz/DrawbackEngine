@@ -1,0 +1,189 @@
+[
+  {
+    "id": "deer-in-the-headlights",
+    "name": "Deer in the Headlights",
+    "description": "A primary mover cannot move while its origin square is attacked by an opponent piece.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "attacked-piece-restriction",
+    "tests": ["packages/drawback-engine/src/rules/attack-observed-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/deer-in-the-headlights.json",
+    "ambiguities": ["Attacked means pseudo-attacked in the current position, including pinned attackers. Castling is evaluated by the primary king origin, not its auxiliary rook."]
+  },
+  {
+    "id": "jumpy",
+    "name": "Jumpy",
+    "description": "If any attacked piece has an ordinary legal move, the affected player must move an attacked piece.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-attacked-mover",
+    "tests": ["packages/drawback-engine/src/rules/attack-observed-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/jumpy.json",
+    "ambiguities": ["An attacked but immobile piece does not trigger the rule because possible is evaluated over ordinary legal moves."]
+  },
+  {
+    "id": "medusa",
+    "name": "Medusa",
+    "description": "A primary mover attacked along an unobstructed line by an opponent queen cannot move.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "attacked-piece-restriction",
+    "tests": ["packages/drawback-engine/src/rules/attack-observed-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/medusa.json",
+    "ambiguities": ["Queen attacks are pseudo-attacks in the current position; blockers of either color stop the ray."]
+  },
+  {
+    "id": "stand-your-ground",
+    "name": "Stand Your Ground",
+    "description": "A primary mover may capture only when its origin square is attacked by an opponent piece.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-restriction",
+    "tests": ["packages/drawback-engine/src/rules/attack-observed-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/stand-your-ground.json",
+    "ambiguities": ["Attacked means pseudo-attacked before the move. En-passant and capturing promotion are captures."]
+  },
+  {
+    "id": "unrequited-love",
+    "name": "Unrequited Love",
+    "description": "The king cannot increase its distance to the nearest own queen, and an own queen cannot move closer to the own king.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "distance-restriction",
+    "tests": ["packages/drawback-engine/src/rules/attack-observed-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/unrequited-love.json",
+    "ambiguities": ["Distance is Manhattan and equal distance is permitted. With multiple queens, king distance uses the nearest own queen; the singular public wording does not define promoted queens."]
+  },
+  {
+    "id": "helicopter-parent",
+    "name": "Helicopter Parent",
+    "description": "The affected player loses if any own pawn is not defended by another own piece.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "start-of-turn-loss",
+    "tests": ["packages/drawback-engine/src/rules/attack-observed-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/helicopter-parent-six.json",
+    "ambiguities": ["Defended means pseudo-defended in the current position. A player with no pawns has no undefended pawn and does not lose."]
+  },
+  {
+    "id": "paranoid",
+    "name": "Paranoid",
+    "description": "The affected player loses if their king is not defended by another own piece.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "start-of-turn-loss",
+    "tests": ["packages/drawback-engine/src/rules/attack-observed-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/paranoid-six.json",
+    "ambiguities": ["Defense is evaluated as pseudo-attack of the current king square rather than a simulated legal recapture after king removal."]
+  },
+  {
+    "id": "rook-buddies",
+    "name": "Rook Buddies",
+    "description": "Rooks and castling are locked until two own rooks have shared an unobstructed rank or file.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "stateful-unlock",
+    "tests": ["packages/drawback-engine/src/rules/attack-observed-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/rook-buddies.json",
+    "ambiguities": ["Any pair of own rooks, including promoted rooks, can unlock permanently. Castling is locked because it moves an auxiliary rook."]
+  },
+  {
+    "id": "atomic-bomb",
+    "name": "Atomic Bomb",
+    "description": "The affected player loses after the opponent captures a piece whose capture square was adjacent to the affected king.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "start-of-turn-loss",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/atomic-bomb-six.json",
+    "ambiguities": ["For en-passant, adjacency uses the removed pawn square rather than the capturing pawn landing square."]
+  },
+  {
+    "id": "get-down-mr-president",
+    "name": "Get Down Mr. President",
+    "description": "While in check, the affected player's primary king cannot move.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "check-response",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/get-down-mr-president.json",
+    "ambiguities": ["Implemented relative to standard-check legality; the source game's capturable-king model may allow positions that standard chess rejects."]
+  },
+  {
+    "id": "guerilla-tactics",
+    "name": "Guerilla Tactics",
+    "description": "After an affected-player capture, the same physical piece must return to its previous origin if an ordinary legal return is available.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-response",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/guerilla-tactics.json",
+    "ambiguities": ["A capturing promotion is followed through its promoted type. If the piece is captured or cannot return, the obligation is inactive."]
+  },
+  {
+    "id": "prince-charming",
+    "name": "Prince Charming",
+    "description": "If any own queen is attacked and a knight has an ordinary legal move, the affected player must move a knight.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forced-response",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/prince-charming.json",
+    "ambiguities": ["Any promoted own queen can trigger. A pawn promotion to knight remains a pawn primary move and does not satisfy."]
+  },
+  {
+    "id": "savior-complex",
+    "name": "Savior Complex",
+    "description": "While in check, every legal response must use a primary queen mover.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "check-response",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/savior-complex.json",
+    "ambiguities": ["A pawn promotion to queen is a pawn move. An empty filtered set produces the generic drawback loss. Implemented relative to standard-check legality; the source game's capturable-king model may differ."]
+  },
+  {
+    "id": "shellshocked",
+    "name": "Shellshocked",
+    "description": "After an opponent capture, affected-player pieces adjacent to the captured piece's square cannot move for one turn.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "capture-cooldown",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/shellshocked.json",
+    "ambiguities": ["For en-passant the blast center is the removed pawn square. Castling is forbidden if either the king or auxiliary rook origin is frozen."]
+  },
+  {
+    "id": "skittish",
+    "name": "Skittish",
+    "description": "While in check, every legal response must use the primary king.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "check-response",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/skittish.json",
+    "ambiguities": ["Implemented relative to standard-check legality. An empty filtered set produces the generic drawback loss."]
+  },
+  {
+    "id": "sleepy-king",
+    "name": "Sleepy King",
+    "description": "The primary king can move only while the affected player is in check.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "check-response",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/observed-six/sleepy-king.json",
+    "ambiguities": ["Being in check permits but does not force a king move. Castling is a king move and is forbidden while not in check. Implemented relative to standard-check legality; the source game's capturable-king model may differ."]
+  },
+  {
+    "id": "three-check",
+    "name": "Three Check",
+    "description": "The affected player loses after the opponent has delivered three checks.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "history-loss",
+    "tests": ["packages/drawback-engine/src/rules/remaining-response-rules.test.ts"],
+    "fixture": "data/fixtures/rules/loss/three-check-six.json",
+    "ambiguities": ["Check count relies on complete chess.js SAN history ending in + or #. Checkmate SAN counts, and drawback loss is evaluated before standard ending conditions. Midgame initialization with truncated history necessarily undercounts prior checks."]
+  }
+]

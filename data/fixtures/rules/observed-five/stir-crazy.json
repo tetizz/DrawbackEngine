@@ -1,0 +1,14 @@
+{
+  "ruleId": "stir-crazy",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1",
+  "history": [
+    {"color":"white","from":"a2","to":"a3","piece":"pawn","san":"a3","flags":"quiet"},
+    {"color":"white","from":"b2","to":"b3","piece":"pawn","san":"b3","flags":"quiet"},
+    {"color":"white","from":"c2","to":"c3","piece":"pawn","san":"c3","flags":"quiet"},
+    {"color":"white","from":"d2","to":"d3","piece":"pawn","san":"d3","flags":"quiet"}
+  ],
+  "ordinaryLegalMoves": ["e1f1", "e2e3"],
+  "allowedMoves": ["e1f1"],
+  "forbiddenMoves": ["e2e3"]
+}

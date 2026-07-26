@@ -1,0 +1,52 @@
+[
+  {
+    "id": "number-of-the-beast",
+    "name": "Number of the Beast",
+    "description": "Cannot move the primary mover to the sixth rank.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-destination",
+    "tests": ["packages/drawback-engine/src/rules/expanded-rules.test.ts"],
+    "fixture": "docs/rules/expanded/replays/number-of-the-beast.json"
+  },
+  {
+    "id": "shadow-queen",
+    "name": "Shadow Queen",
+    "description": "The player's queen can move only to dark squares.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "forbidden-destination",
+    "tests": ["packages/drawback-engine/src/rules/expanded-rules.test.ts"],
+    "fixture": "docs/rules/expanded/replays/shadow-queen.json"
+  },
+  {
+    "id": "entrenched",
+    "name": "Entrenched",
+    "description": "The player's rooks cannot move more than two squares.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-distance",
+    "tests": ["packages/drawback-engine/src/rules/expanded-rules.test.ts"],
+    "fixture": "docs/rules/expanded/replays/entrenched.json"
+  },
+  {
+    "id": "no-shuffling",
+    "name": "No Shuffling",
+    "description": "The player's rooks cannot move sideways.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-direction",
+    "tests": ["packages/drawback-engine/src/rules/expanded-rules.test.ts"],
+    "fixture": "docs/rules/expanded/replays/no-shuffling.json"
+  },
+  {
+    "id": "stop-stalling",
+    "name": "Stop Stalling",
+    "description": "The player's primary pieces cannot move laterally.",
+    "parameterSchema": {},
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "movement-direction",
+    "tests": ["packages/drawback-engine/src/rules/expanded-rules.test.ts"],
+    "fixture": "docs/rules/expanded/replays/stop-stalling.json"
+  }
+]

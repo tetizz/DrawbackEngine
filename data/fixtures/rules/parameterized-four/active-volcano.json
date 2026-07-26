@@ -1,0 +1,8 @@
+{
+  "ruleId": "active-volcano",
+  "parameters": {"square": "d4"},
+  "positionFen": "4k3/8/8/8/8/2N5/8/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["c3d5", "c3b5"],
+  "allowedMoves": ["c3b5"],
+  "forbiddenMoves": ["c3d5"]
+}

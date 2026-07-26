@@ -1,0 +1,8 @@
+{
+  "ruleId": "trophy-wife",
+  "description": "The queen may move quietly but cannot capture the rook.",
+  "initialFen": "4k3/3r4/8/8/8/8/8/3QK3 w - - 0 1",
+  "moves": [],
+  "allowedProbe": "d1d4",
+  "forbiddenProbe": "d1d7"
+}

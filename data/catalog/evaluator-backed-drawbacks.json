@@ -1,0 +1,38 @@
+[
+  {
+    "id": "hand-and-gigabrain",
+    "name": "Hand and Gigabrain",
+    "description": "You must move the piece type selected by the configured deterministic evaluator.",
+    "verification": "implemented-unverified",
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "evaluator-backed turn constraint",
+    "parameterSchema": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "tests": [
+      "packages/drawback-engine/src/rules/evaluator-backed-rules.test.ts",
+      "packages/chess-core/src/async-game-session.test.ts",
+      "packages/simulation-arena/src/async-simulation.test.ts",
+      "packages/chess-evaluator/src/turn-constraint-provider.test.ts"
+    ]
+  },
+  {
+    "id": "ichtyophobe",
+    "name": "Ichtyophobe",
+    "description": "You cannot make the exact move selected by the configured deterministic evaluator.",
+    "verification": "implemented-unverified",
+    "implementationStatus": "implemented-unverified",
+    "ruleFamily": "evaluator-backed turn constraint",
+    "parameterSchema": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "tests": [
+      "packages/drawback-engine/src/rules/evaluator-backed-rules.test.ts",
+      "packages/chess-core/src/async-game-session.test.ts",
+      "packages/simulation-arena/src/async-simulation.test.ts",
+      "packages/chess-evaluator/src/turn-constraint-provider.test.ts"
+    ]
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "ruleId": "stand-your-ground",
+  "positionFen": "r3k3/8/8/1p6/8/2N5/Rp6/4K3 w - - 0 1",
+  "ordinaryLegalMoves": ["a2b2", "c3b5"],
+  "allowedMoves": ["a2b2"],
+  "forbiddenMoves": ["c3b5"]
+}

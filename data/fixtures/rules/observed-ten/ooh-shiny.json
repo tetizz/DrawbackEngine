@@ -1,0 +1,7 @@
+{
+  "ruleId": "ooh-shiny",
+  "positionFen": "4k3/p7/8/8/8/8/8/R3K3 w - - 0 1",
+  "ordinaryLegalMoves": ["a1a7", "e1e2"],
+  "allowedMoves": ["a1a7"],
+  "forbiddenMoves": ["e1e2"]
+}

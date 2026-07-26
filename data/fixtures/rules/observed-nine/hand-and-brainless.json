@@ -1,0 +1,8 @@
+{
+  "ruleId": "hand-and-brainless",
+  "positionFen": "4k3/8/8/8/8/8/4P3/2B1K3 w - - 0 1",
+  "parameters": {"seed": 0},
+  "ordinaryLegalMoves": ["c1d2", "e2e3"],
+  "allowedMoves": ["c1d2"],
+  "forbiddenMoves": ["e2e3"]
+}

@@ -1,0 +1,137 @@
+import { readFile, readdir } from "node:fs/promises";
+import { join, relative } from "node:path";
+import console from "node:console";
+import process from "node:process";
+import { fileURLToPath, URL } from "node:url";
+
+const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
+const sourceRoots = ["apps", "packages"];
+const forbiddenPatterns = [
+  ["legacy package namespace", /@drawbacktrainer\//i],
+  ["predictor package", /@drawbackengine\/predictor|packages[\\/]predictor/i],
+  ["browser application", /apps[\\/]web/i],
+  ["machine-learning workspace", /(?:^|[\\/])ml[\\/]/i],
+  [
+    "corpus or dataset module",
+    /(?:from\s+|import\s*\()["'][^"']*(?:corpus|dataset)(?:-cli)?(?:\.[cm]?[jt]s)?["']/i,
+  ],
+];
+const scanExtensions = new Set([".cjs", ".js", ".json", ".mjs", ".ts", ".tsx"]);
+const expectedArenaFiles = new Set([
+  "agents.test.ts",
+  "agents.ts",
+  "async-simulation.test.ts",
+  "async-simulation.ts",
+  "batch.test.ts",
+  "batch.ts",
+  "catalog.test.ts",
+  "catalog.ts",
+  "index.ts",
+  "parallel.test.ts",
+  "parallel-worker.ts",
+  "parallel.ts",
+  "parameterized-property.test.ts",
+  "prepared-catalog.test.ts",
+  "prepared-catalog.ts",
+  "prepared-parallel.test.ts",
+  "property.test.ts",
+  "simulation.test.ts",
+  "simulation.ts",
+  "stockfish-agent.test.ts",
+  "stockfish-agent.ts",
+  "test-uci-config.ts",
+  "worker-retry.test.ts",
+  "worker-retry.ts",
+]);
+
+async function filesUnder(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (entry.name === "dist" || entry.name === "node_modules") {
+      continue;
+    }
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await filesUnder(path));
+    } else {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+function extensionOf(path) {
+  const lastDot = path.lastIndexOf(".");
+  return lastDot === -1 ? "" : path.slice(lastDot);
+}
+
+const failures = [];
+for (const sourceRoot of sourceRoots) {
+  for (const path of await filesUnder(join(repositoryRoot, sourceRoot))) {
+    if (!scanExtensions.has(extensionOf(path))) {
+      continue;
+    }
+    const contents = await readFile(path, "utf8");
+    for (const [description, pattern] of forbiddenPatterns) {
+      if (pattern.test(contents)) {
+        failures.push(`${relative(repositoryRoot, path)} contains ${description}`);
+      }
+    }
+  }
+}
+
+const arenaDirectory = join(repositoryRoot, "packages", "simulation-arena", "src");
+const actualArenaFiles = new Set(
+  (await readdir(arenaDirectory, { withFileTypes: true }))
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name),
+);
+for (const file of actualArenaFiles) {
+  if (!expectedArenaFiles.has(file)) {
+    failures.push(`packages/simulation-arena/src/${file} is outside the reviewed engine-only arena boundary`);
+  }
+}
+for (const file of expectedArenaFiles) {
+  if (!actualArenaFiles.has(file)) {
+    failures.push(`packages/simulation-arena/src/${file} is missing from the reviewed arena boundary`);
+  }
+}
+
+const manifests = [
+  "apps/engine-cli/package.json",
+  "packages/chess-core/package.json",
+  "packages/chess-evaluator/package.json",
+  "packages/drawback-engine/package.json",
+  "packages/drawback-search/package.json",
+  "packages/probe-search/package.json",
+  "packages/shared/package.json",
+  "packages/simulation-arena/package.json",
+];
+for (const manifestPath of manifests) {
+  const manifest = JSON.parse(await readFile(join(repositoryRoot, manifestPath), "utf8"));
+  const dependencies = {
+    ...manifest.dependencies,
+    ...manifest.optionalDependencies,
+    ...manifest.peerDependencies,
+  };
+  for (const dependency of Object.keys(dependencies)) {
+    if (
+      dependency === "@drawbackengine/predictor"
+      || dependency === "@drawbackengine/simulation"
+      || dependency.startsWith("@drawbacktrainer/")
+    ) {
+      failures.push(`${manifestPath} depends on forbidden package ${dependency}`);
+    }
+  }
+}
+
+if (failures.length > 0) {
+  console.error("Repository boundary validation failed:");
+  for (const failure of failures) {
+    console.error(`- ${failure}`);
+  }
+  process.exitCode = 1;
+} else {
+  console.log("Repository boundary validation passed.");
+}

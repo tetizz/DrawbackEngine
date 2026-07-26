@@ -1,0 +1,7 @@
+{
+  "ruleId": "separation-anxiety",
+  "positionFen": "4k3/8/8/8/8/8/3PK1P1/8 w - - 0 1",
+  "ordinaryLegalMoves": ["d2d3", "d2d4", "g2g4", "e2f2"],
+  "allowedMoves": ["d2d3", "g2g4", "e2f2"],
+  "forbiddenMoves": ["d2d4"]
+}

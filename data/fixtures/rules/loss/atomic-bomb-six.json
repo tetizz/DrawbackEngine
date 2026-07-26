@@ -1,0 +1,8 @@
+{
+  "ruleId": "atomic-bomb",
+  "positionFen": "4k3/8/8/8/8/8/4r3/4K3 w - - 0 1",
+  "history": [
+    {"color":"black","from":"d3","to":"e2","piece":"rook","captured":"pawn","san":"Rxe2+","flags":"capture"}
+  ],
+  "lossExpected": true
+}

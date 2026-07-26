@@ -1,0 +1,8 @@
+{
+  "ruleId": "oddball",
+  "description": "A capture is forbidden on even fullmove number two.",
+  "initialFen": "4k3/p7/8/8/8/8/8/R3K3 w - - 0 2",
+  "moves": [],
+  "allowedProbe": "a1a6",
+  "forbiddenProbe": "a1a7"
+}

@@ -1,0 +1,132 @@
+import { describe, expect, it } from "vitest";
+import {
+  assertParallelWorkerRequest,
+  simulateBatchParallel,
+  simulateCatalogBatchParallel,
+} from "./parallel.js";
+
+const CI_TIMEOUT_MS = 30_000;
+
+const spec = {
+  whiteRuleId: "vegan",
+  blackRuleId: "checkers",
+  whiteAgentId: "human-like-medium",
+  blackAgentId: "greedy-material",
+  maxPlies: 8,
+} as const;
+
+function serialized(
+  games: Awaited<ReturnType<typeof simulateBatchParallel>>,
+): string {
+  return JSON.stringify(games);
+}
+
+describe("parallel simulation", () => {
+  it("preserves exact game and row order across worker counts", async () => {
+    const serialWorkers = await simulateBatchParallel({
+      seed: 31415,
+      games: 5,
+      workers: 1,
+      spec,
+    });
+    const parallelWorkers = await simulateBatchParallel({
+      seed: 31415,
+      games: 5,
+      workers: 3,
+      spec,
+    });
+    expect(parallelWorkers).toEqual(serialWorkers);
+    expect(serialized(parallelWorkers)).toBe(serialized(serialWorkers));
+  });
+
+  it(
+    "is reproducible for repeated parallel runs",
+    async () => {
+      const request = { seed: 7, games: 2, workers: 2, spec } as const;
+      expect(await simulateBatchParallel(request)).toEqual(
+        await simulateBatchParallel(request),
+      );
+    },
+    CI_TIMEOUT_MS,
+  );
+
+  it("rejects invalid worker and game counts", async () => {
+    await expect(
+      simulateBatchParallel({ seed: 1, games: 1, workers: 0, spec }),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      simulateBatchParallel({ seed: 1, games: 0, workers: 1, spec }),
+    ).rejects.toThrow(RangeError);
+  });
+
+  it("validates tagged worker protocol versions and assignments", () => {
+    const valid = {
+      schemaVersion: 3,
+      kind: "prepared-catalog-assignments",
+      assignedGames: [{
+        gameIndex: 0,
+        assignment: {
+          seed: 1,
+          whiteRuleId: "vegan",
+          blackRuleId: "checkers",
+          whiteAgentId: "random-legal",
+          blackAgentId: "greedy-material",
+        },
+      }],
+      evaluator: {},
+      maxPlies: 2,
+    };
+    expect(() => {
+      assertParallelWorkerRequest(valid);
+    }).not.toThrow();
+    expect(() => {
+      assertParallelWorkerRequest({ ...valid, schemaVersion: 2 });
+    }).toThrow("schema/kind");
+    expect(() => {
+      assertParallelWorkerRequest({
+        ...valid,
+        assignedGames: [{
+          ...valid.assignedGames[0],
+          assignment: {
+            ...valid.assignedGames[0]?.assignment,
+            whiteRuleId: "unknown",
+          },
+        }],
+      });
+    }).toThrow("prepared catalog");
+    expect(() => {
+      assertParallelWorkerRequest({
+        ...valid,
+        assignedGames: [
+          valid.assignedGames[0],
+          valid.assignedGames[0],
+        ],
+      });
+    }).toThrow("indexes");
+    expect(() => {
+      assertParallelWorkerRequest({ ...valid, extra: true });
+    }).toThrow("invalid fields");
+  });
+
+  it(
+    "keeps randomized catalog batches identical across worker counts",
+    async () => {
+      const request = {
+        seed: 0xabcdef,
+        games: 4,
+        maxPlies: 6,
+      } as const;
+      const oneWorker = await simulateCatalogBatchParallel({
+        ...request,
+        workers: 1,
+      });
+      const threeWorkers = await simulateCatalogBatchParallel({
+        ...request,
+        workers: 3,
+      });
+      expect(threeWorkers).toEqual(oneWorker);
+      expect(serialized(threeWorkers)).toBe(serialized(oneWorker));
+    },
+    CI_TIMEOUT_MS,
+  );
+});

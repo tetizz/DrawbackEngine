@@ -1,0 +1,11 @@
+{
+  "ruleId": "left-to-right",
+  "contextOnly": true,
+  "positionFen": "4k3/8/8/8/8/8/8/1N2K1N1 w - - 0 1",
+  "history": [
+    {"color":"white","from":"b2","to":"d4","piece":"bishop","san":"Bd4","flags":"quiet"}
+  ],
+  "ordinaryLegalMoves": ["g1f3", "b1c3"],
+  "allowedMoves": ["g1f3"],
+  "forbiddenMoves": ["b1c3"]
+}
