@@ -109,9 +109,23 @@ boundary are documented in
 
 Player-private capturable-king simulations have a separate versioned trace
 contract with full public authority snapshots and exact executable replay.
-They are not written through the orthodox batch command. Bounded streaming
-export and the Guesser adapter must land before a capturable training corpus is
-generated.
+They are not written through the orthodox batch command. Generate one
+explicit split at a time with the same split counts and seed roots:
+
+```bash
+pnpm --filter @drawbackengine/cli player-private:batch -- \
+  train 1000 200 200 8 448663553 1785536514 2586451971 \
+  data/player-private-train.ndjson
+```
+
+The positional values are split, train/validation/test counts, workers,
+label/gameplay/parameter seed roots, and output path. Optional trailing values
+set max plies, bounded window size, search depth, node budget, and temperature.
+Use `validation` and `test` with otherwise identical arguments to publish the
+held-out files. The scheduler balances ordered drawback pairs independently
+inside each split, keeps their gameplay seeds disjoint, and streams without
+materializing the corpus in RAM. The Guesser adapter must still land before
+these privileged traces are accepted for model training.
 
 Ask the exact drawback-aware search for a move:
 

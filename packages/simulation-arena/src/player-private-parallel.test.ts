@@ -31,11 +31,13 @@ const policy: PlayerPrivateSearchPolicy = {
 const assignments = [
   {
     seed: 101,
+    parameterSeeds: { white: 1_101, black: 1_102 },
     whiteRuleId: "vegan",
     blackRuleId: "checkers",
   },
   {
     seed: 202,
+    parameterSeeds: { white: 1_202, black: 1_203 },
     whiteRuleId: "truant",
     blackRuleId: "spice-of-life",
   },
@@ -104,6 +106,7 @@ describe("parallel player-private simulation", () => {
   it("snapshots caller-owned assignments and policy before worker retries", async () => {
     const mutableAssignments: PlayerPrivateGameAssignment[] = [{
       seed: 303,
+      parameterSeeds: { white: 1_303, black: 1_304 },
       whiteRuleId: "vegan",
       blackRuleId: "checkers",
     }];
@@ -121,6 +124,7 @@ describe("parallel player-private simulation", () => {
 
     mutableAssignments[0] = {
       seed: 404,
+      parameterSeeds: { white: 1_404, black: 1_405 },
       whiteRuleId: "lame-duck",
       blackRuleId: "truant",
     };
@@ -193,6 +197,28 @@ describe("parallel player-private simulation", () => {
         1,
       );
     }).toThrow("search provenance");
+
+    const corruptedParameterSeed = {
+      ...response,
+      games: [{
+        gameIndex: 0,
+        result: {
+          ...result,
+          parameterSeeds: {
+            ...result.parameterSeeds,
+            white: (result.parameterSeeds.white + 1) >>> 0,
+          },
+        },
+      }],
+    } as const;
+    expect(() => {
+      assertPlayerPrivateWorkerResponse(
+        corruptedParameterSeed,
+        assignedGames,
+        policy,
+        1,
+      );
+    }).toThrow("parameter seeds");
 
     const forgedShortActive = {
       ...response,

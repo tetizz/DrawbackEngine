@@ -26,6 +26,10 @@ export interface PlayerPrivateSearchPolicy {
 
 export interface PlayerPrivateGameAssignment {
   readonly seed: number;
+  readonly parameterSeeds: {
+    readonly white: number;
+    readonly black: number;
+  };
   readonly whiteRuleId: PlayerPrivateRuleId;
   readonly blackRuleId: PlayerPrivateRuleId;
 }
@@ -116,7 +120,7 @@ export function assertPlayerPrivateGameAssignment(value: unknown): void {
   const assignment = protocolRecord(value, "player-private assignment");
   assertExactKeys(
     assignment,
-    ["seed", "whiteRuleId", "blackRuleId"],
+    ["seed", "parameterSeeds", "whiteRuleId", "blackRuleId"],
     "player-private assignment",
   );
   const seed = assignment["seed"];
@@ -126,6 +130,27 @@ export function assertPlayerPrivateGameAssignment(value: unknown): void {
     || (seed as number) > 0xffff_ffff
   ) {
     throw new RangeError("Player-private assignment seed must be uint32.");
+  }
+  const parameterSeeds = protocolRecord(
+    assignment["parameterSeeds"],
+    "player-private assignment parameterSeeds",
+  );
+  assertExactKeys(
+    parameterSeeds,
+    ["white", "black"],
+    "player-private assignment parameterSeeds",
+  );
+  for (const color of ["white", "black"] as const) {
+    const parameterSeed = parameterSeeds[color];
+    if (
+      !Number.isSafeInteger(parameterSeed)
+      || (parameterSeed as number) < 0
+      || (parameterSeed as number) > 0xffff_ffff
+    ) {
+      throw new RangeError(
+        `Player-private ${color} parameter seed must be uint32.`,
+      );
+    }
   }
   for (const key of ["whiteRuleId", "blackRuleId"] as const) {
     if (

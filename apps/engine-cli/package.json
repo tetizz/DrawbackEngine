@@ -17,6 +17,7 @@
     "demo": "tsx src/cli.ts",
     "oracle:move": "tsx src/drawback-engine-cli.ts",
     "parallel": "tsx src/parallel-cli.ts",
+    "player-private:batch": "tsx src/player-private-batch-cli.ts",
     "pgn:evaluator-sidecar": "tsx src/pgn-evaluator-sidecar-cli.ts",
     "start": "tsx src/cli.ts"
   },

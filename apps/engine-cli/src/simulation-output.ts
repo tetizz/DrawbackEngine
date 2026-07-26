@@ -1,13 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
-import { once } from "node:events";
-import { createWriteStream } from "node:fs";
-import { link, rm } from "node:fs/promises";
-import { finished } from "node:stream/promises";
 import {
   createPrivateSimulationTrace,
   type SimulationResult,
 } from "@drawbackengine/simulation-arena";
 import { encodePrivateSimulationTraceRecord } from "@drawbackengine/simulation-trace";
+import { writeNdjsonFileAtomicNoClobber } from "./atomic-ndjson.js";
 
 export interface TextOutput {
   write(chunk: string): unknown;
@@ -60,42 +56,6 @@ export function writeSimulationTraceNdjson(
   return games.length;
 }
 
-async function removeIfPresent(path: string): Promise<void> {
-  try {
-    await rm(path);
-  } catch (error: unknown) {
-    if (
-      typeof error === "object"
-      && error !== null
-      && "code" in error
-      && error.code === "ENOENT"
-    ) {
-      return;
-    }
-    throw error;
-  }
-}
-
-async function publishNoClobber(
-  temporaryPath: string,
-  path: string,
-): Promise<void> {
-  await link(temporaryPath, path);
-  try {
-    await rm(temporaryPath);
-  } catch (error: unknown) {
-    try {
-      await removeIfPresent(path);
-    } catch (cleanupError: unknown) {
-      throw new AggregateError(
-        [error, cleanupError],
-        "Published trace cleanup failed for both temporary and final paths.",
-      );
-    }
-    throw error;
-  }
-}
-
 /**
  * Writes canonical UTF-8 NDJSON to a same-directory temporary file and
  * publishes it without replacing an existing corpus.
@@ -106,44 +66,17 @@ export async function writeSimulationTraceNdjsonFileAtomic(
   options: SimulationTraceOutputOptions = {},
 ): Promise<WrittenSimulationTraceFile> {
   const offset = checkedGameIndexOffset(games, options);
-  const temporaryPath = `${path}.tmp-${String(process.pid)}-${randomUUID()}`;
-  const stream = createWriteStream(temporaryPath, {
-    encoding: "utf8",
-    flags: "wx",
-    mode: 0o600,
-  });
-  const hash = createHash("sha256");
-  let bytes = 0;
-  try {
+  const chunks = (function* (): Generator<string> {
     for (const [index, game] of games.entries()) {
-      const chunk = encodePrivateSimulationTraceRecord(
+      yield encodePrivateSimulationTraceRecord(
         createPrivateSimulationTrace(game, offset + index),
       );
-      hash.update(chunk, "utf8");
-      bytes += Buffer.byteLength(chunk, "utf8");
-      if (!stream.write(chunk, "utf8")) {
-        await once(stream, "drain");
-      }
     }
-    stream.end();
-    await finished(stream);
-    await publishNoClobber(temporaryPath, path);
-    return {
-      games: games.length,
-      bytes,
-      sha256: hash.digest("hex"),
-    };
-  } catch (error: unknown) {
-    stream.destroy();
-    await finished(stream).catch(() => undefined);
-    try {
-      await removeIfPresent(temporaryPath);
-    } catch (cleanupError: unknown) {
-      throw new AggregateError(
-        [error, cleanupError],
-        "Trace generation failed and its private temporary file could not be removed.",
-      );
-    }
-    throw error;
-  }
+  })();
+  const written = await writeNdjsonFileAtomicNoClobber(path, chunks);
+  return {
+    games: written.records,
+    bytes: written.bytes,
+    sha256: written.sha256,
+  };
 }

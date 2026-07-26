@@ -28,6 +28,7 @@ async function run(
       gameIndex,
       result: await simulatePlayerPrivateGame({
         seed: assignment.seed,
+        parameterSeeds: assignment.parameterSeeds,
         rules: {
           white: resolvePlayerPrivateRule(assignment.whiteRuleId),
           black: resolvePlayerPrivateRule(assignment.blackRuleId),

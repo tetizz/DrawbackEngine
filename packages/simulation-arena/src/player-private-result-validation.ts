@@ -12,7 +12,6 @@ import {
 import {
   validatePlayerPrivateTerminal,
 } from "./player-private-terminal-validation.js";
-import { createSimulationRandomStreams } from "./random-streams.js";
 
 export function assertPlayerPrivateWorkerResponse(
   value: unknown,
@@ -106,7 +105,10 @@ function validatePlayerPrivateResult(
       "Player-private result authority, seed, or ply limit does not match its assignment.",
     );
   }
-  validateParameterSeeds(result["parameterSeeds"], assignment.seed);
+  validateParameterSeeds(
+    result["parameterSeeds"],
+    assignment.parameterSeeds,
+  );
   if (result["hypothesisPolicyId"] !== "unrestricted-baseline/v1") {
     throw new TypeError(
       "Player-private result hypothesis provenance is invalid.",
@@ -117,7 +119,10 @@ function validatePlayerPrivateResult(
   validatePositionChain(result, assignment, expectedPlyLimit);
 }
 
-function validateParameterSeeds(value: unknown, gameSeed: number): void {
+function validateParameterSeeds(
+  value: unknown,
+  expected: PlayerPrivateGameAssignment["parameterSeeds"],
+): void {
   const seeds = protocolRecord(
     value,
     "player-private result parameter seeds",
@@ -127,7 +132,6 @@ function validateParameterSeeds(value: unknown, gameSeed: number): void {
     ["white", "black"],
     "player-private result parameter seeds",
   );
-  const expected = createSimulationRandomStreams(gameSeed).parameterSeeds;
   if (
     seeds["white"] !== expected.white
     || seeds["black"] !== expected.black

@@ -107,9 +107,27 @@ export. Worker-count determinism remains a simulation invariant; the trace
 writer preserves the supplied game order.
 
 The capturable record projection is available through
-`createPlayerPrivateSimulationTrace`. Bounded streaming assignment and atomic
-NDJSON publication are a separate follow-up so the first capturable corpus is
-not materialized in memory or written through the orthodox CLI by mistake.
+`createPlayerPrivateSimulationTrace`.
+
+`createPlayerPrivateAssignmentSchedule` lazily produces independent
+train/validation/test ranges. Rule labels use a Latin-pair schedule: for `R`
+selected rules every `R` games balance each color's marginal labels and every
+`R²` games cover every ordered White/Black pair once. Label permutations,
+gameplay seeds, and White/Black parameter seeds have separate roots. Changing
+one root leaves the other two domains unchanged.
+
+`streamPlayerPrivateAssignmentsParallel` retains at most one configured
+assignment window, emits strictly increasing global indexes, and is
+byte-identical across worker and window sizes. It does not materialize the
+schedule or result corpus. The CLI's player-private writer accepts exactly one
+declared split, applies stream backpressure, hashes exact bytes, publishes with
+the same no-clobber hard-link protocol, and removes partial private output on
+any later validation or split-boundary failure.
+
+Each split is published to a separate file. Split membership is a dataset
+boundary supplied to DrawbackGuesser, not a model feature and not a field
+inside the engine game record. Global game indexes and independently derived
+gameplay seeds remain disjoint across the three contiguous split ranges.
 
 ## Dependency direction
 

@@ -172,7 +172,6 @@ the executable session. The orthodox trace version remains unchanged.
 
 - Add the leakage-checked capturable dataset adapter in DrawbackGuesser before
   these records are accepted into neural-model training.
-- Add bounded streaming scheduling and atomic capturable NDJSON output.
 - Bind evaluator and hypothesis-manifest digests into trace provenance.
 - Extend the capturable authority audit beyond the current ten-rule catalog.
 - Add evaluator-backed drawbacks without weakening the private capability

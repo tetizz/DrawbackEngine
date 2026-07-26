@@ -47,6 +47,23 @@ export {
   simulatePlayerPrivateAssignmentsParallel,
 } from "./player-private-parallel.js";
 export {
+  createPlayerPrivateAssignmentSchedule,
+  PLAYER_PRIVATE_DATA_SPLITS,
+} from "./player-private-assignment-scheduler.js";
+export {
+  streamPlayerPrivateAssignmentsParallel,
+} from "./player-private-stream.js";
+export type {
+  PlayerPrivateAssignmentStreamRequest,
+  StreamedPlayerPrivateResult,
+} from "./player-private-stream.js";
+export type {
+  PlayerPrivateAssignmentScheduleOptions,
+  PlayerPrivateDataSplit,
+  PlayerPrivateSplitCounts,
+  ScheduledPlayerPrivateAssignment,
+} from "./player-private-assignment-scheduler.js";
+export {
   assertPlayerPrivateWorkerRequest,
 } from "./player-private-parallel-protocol.js";
 export {
