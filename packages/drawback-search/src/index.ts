@@ -15,7 +15,12 @@ export {
   PublicRuleStateReconstructionError,
 } from "./player-private-capability.js";
 export {
+  IncompletePlayerPrivateSearchError,
+  searchIterativePlayerPrivateDrawbackMove,
+} from "./player-private-iterative-search.js";
+export {
   searchPlayerPrivateDrawbackMove,
+  searchPlayerPrivateDrawbackRootMove,
 } from "./player-private-search.js";
 export {
   searchOmniscientDrawbackMove,
@@ -58,7 +63,13 @@ export type {
   PublicDrawbackHypothesis,
 } from "./player-private-capability.js";
 export type {
+  IterativePlayerPrivateSearchLimits,
+  IterativePlayerPrivateSearchResult,
+  PlayerPrivateSearchContext,
+} from "./player-private-iterative-search.js";
+export type {
   PlayerPrivateSearchInput,
+  PlayerPrivateRootMoveSearchResult,
   PlayerPrivateSearchResult,
 } from "./player-private-search.js";
 export type {

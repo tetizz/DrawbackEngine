@@ -36,6 +36,17 @@ function evaluator(score = 17): {
 }
 
 describe("createCachingLeafEvaluator", () => {
+  it("rejects an unknown history mode instead of silently ignoring history", () => {
+    const base = evaluator();
+    expect(() =>
+      createCachingLeafEvaluator({
+        evaluator: base.evaluator,
+        maxEntries: 4,
+        historyMode: "ful" as never,
+      })
+    ).toThrow("historyMode must be full or ignore");
+  });
+
   it("reuses a resolved evaluation for the complete identical leaf", async () => {
     const base = evaluator();
     const cached = createCachingLeafEvaluator({

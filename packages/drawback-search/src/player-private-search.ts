@@ -62,6 +62,12 @@ export interface PlayerPrivateSearchResult {
   readonly opponentHypothesisCount: number;
 }
 
+export interface PlayerPrivateRootMoveSearchResult
+  extends PlayerPrivateSearchResult {
+  /** Fully searched outer depth for this exact root. */
+  readonly depth: number;
+}
+
 interface PrivateNode {
   readonly position: CapturableKingPosition;
   readonly history: readonly ChessMove[];
@@ -93,33 +99,18 @@ interface TurnExpansion {
   readonly moves: readonly ChessMove[];
 }
 
+interface PreparedSearchRoot {
+  readonly root: PrivateNode;
+  readonly rootColor: PlayerColor;
+  readonly moves: readonly ChessMove[];
+}
+
 export async function searchPlayerPrivateDrawbackMove(
   input: PlayerPrivateSearchInput,
 ): Promise<PlayerPrivateSearchResult> {
-  validateInput(input);
-  throwIfAborted(input.limits.signal);
-  const traced = inspectPublicGameTrace(input.trace);
-  if (traced.current.authorityId !== AUTHORITY_ID) {
-    throw new Error("Player-private search requires capturable-king/v1.");
-  }
-  const rootPosition = CapturableKingPosition.fromSnapshot(traced.current);
-  const rootColor = rootPosition.turn;
-  const root: PrivateNode = {
-    position: rootPosition,
-    history: structuredClone(traced.moves),
-    own: input.own.fork(),
-    opponent: normalizeHypotheses(input.opponent),
-  };
-  const expansion = expandTurn(root, rootColor, 0);
-  if (expansion.terminalScore !== null) {
-    throw new Error("Cannot search a terminal player-private position.");
-  }
-  if (expansion.moves.length === 0) {
-    throw new Error("Active player-private position has no legal moves.");
-  }
-
+  const prepared = prepareSearchRoot(input);
   const state: SearchState = {
-    rootColor,
+    rootColor: prepared.rootColor,
     evaluator: input.evaluator,
     limits: input.limits,
     nodes: 1,
@@ -130,13 +121,13 @@ export async function searchPlayerPrivateDrawbackMove(
   let bestScore = -INFINITY;
   let bestLine: readonly ChessMove[] = [];
   let alpha = -INFINITY;
-  for (const move of orderedMoves(expansion.moves)) {
+  for (const move of orderedMoves(prepared.moves)) {
     throwIfAborted(input.limits.signal);
     if (bestMove !== null && state.nodes >= input.limits.maxNodes) {
       state.truncated = true;
       break;
     }
-    const branch = applyOwnMove(root, move);
+    const branch = applyOwnMove(prepared.root, move);
     const result = await searchNode(
       branch,
       input.limits.depth - 1,
@@ -169,12 +160,112 @@ export async function searchPlayerPrivateDrawbackMove(
     nodes: state.nodes,
     leaves: state.leaves,
     truncated: state.truncated,
-    rootColor,
+    rootColor: prepared.rootColor,
     evaluatorId: input.evaluator.id,
     knowledgeMode: "player-private",
     aggregation: "worst-case",
     opponentHypothesisCount: input.opponent.length,
   });
+}
+
+/**
+ * Scores one exact player-private root with a full alpha-beta window.
+ *
+ * The input retains the same branded own-rule and public-hypothesis
+ * capabilities as the multi-root search. No authoritative opponent runtime or
+ * secret state is accepted.
+ */
+export async function searchPlayerPrivateDrawbackRootMove(
+  input: PlayerPrivateSearchInput,
+  rootMove: Pick<ChessMove, "from" | "to" | "promotion">,
+): Promise<PlayerPrivateRootMoveSearchResult> {
+  const prepared = prepareSearchRoot(input);
+  const move = prepared.moves.find((candidate) =>
+    sameMove(candidate, rootMove)
+  );
+  if (move === undefined) {
+    throw new RangeError(
+      `Root move ${moveId(rootMove)} is not legal under the player's drawback.`,
+    );
+  }
+  const state: SearchState = {
+    rootColor: prepared.rootColor,
+    evaluator: input.evaluator,
+    limits: input.limits,
+    nodes: 1,
+    leaves: 0,
+    truncated: false,
+  };
+  const branch = applyOwnMove(prepared.root, move);
+  const result = await searchNode(
+    branch,
+    input.limits.depth - 1,
+    -INFINITY,
+    INFINITY,
+    1,
+    state,
+  );
+  return Object.freeze({
+    move: structuredClone(move),
+    score: result.score,
+    principalVariation: Object.freeze(
+      structuredClone([move, ...result.principalVariation]),
+    ),
+    nodes: state.nodes,
+    leaves: state.leaves,
+    truncated: state.truncated,
+    rootColor: prepared.rootColor,
+    evaluatorId: input.evaluator.id,
+    knowledgeMode: "player-private",
+    aggregation: "worst-case",
+    opponentHypothesisCount: input.opponent.length,
+    depth: input.limits.depth,
+  });
+}
+
+/**
+ * Internal candidate discovery for complete-root iterative search.
+ *
+ * This returns only exact own-rule legal moves and preserves the same
+ * capability validation as the public search entry points.
+ */
+export function playerPrivateDrawbackRootMoves(
+  input: PlayerPrivateSearchInput,
+): readonly ChessMove[] {
+  return Object.freeze(
+    structuredClone(orderedMoves(prepareSearchRoot(input).moves)),
+  );
+}
+
+function prepareSearchRoot(
+  input: PlayerPrivateSearchInput,
+): PreparedSearchRoot {
+  validateInput(input);
+  throwIfAborted(input.limits.signal);
+  const traced = inspectPublicGameTrace(input.trace);
+  if (traced.current.authorityId !== AUTHORITY_ID) {
+    throw new Error("Player-private search requires capturable-king/v1.");
+  }
+  const rootPosition = CapturableKingPosition.fromSnapshot(traced.current);
+  const rootColor = rootPosition.turn;
+  const root: PrivateNode = {
+    position: rootPosition,
+    history: structuredClone(traced.moves),
+    own: input.own.fork(),
+    opponent: normalizeHypotheses(input.opponent),
+  };
+  const expansion = expandTurn(root, rootColor, 0);
+  if (expansion.terminalScore !== null) {
+    throw new Error("Cannot search a terminal player-private position.");
+  }
+  if (expansion.moves.length === 0) {
+    throw new Error("Active player-private position has no legal moves.");
+  }
+  return {
+    root,
+    rootColor,
+    moves: expansion.moves,
+  };
 }
 
 async function searchNode(

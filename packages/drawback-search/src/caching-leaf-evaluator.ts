@@ -3,6 +3,8 @@ import type {
   LeafPosition,
 } from "./types.js";
 
+const CACHE_HISTORY_MODES = new Set<string>(["full", "ignore"]);
+
 export interface CachingLeafEvaluatorOptions {
   readonly evaluator: DrawbackLeafEvaluator;
   readonly maxEntries: number;
@@ -47,6 +49,14 @@ export function createCachingLeafEvaluator(
   }
   if (options.evaluator.id.trim().length === 0) {
     throw new RangeError("Wrapped leaf evaluator ID must not be empty.");
+  }
+  if (
+    options.historyMode !== undefined
+    && !CACHE_HISTORY_MODES.has(options.historyMode)
+  ) {
+    throw new RangeError(
+      "Leaf evaluation cache historyMode must be full or ignore.",
+    );
   }
   const values = new Map<string, number>();
   const historyMode = options.historyMode ?? "full";
