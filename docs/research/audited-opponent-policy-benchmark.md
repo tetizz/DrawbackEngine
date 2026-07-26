@@ -6,6 +6,10 @@ Does replacing the unrestricted opponent control with a public-only uniform
 posterior over the ten audited drawbacks improve move selection under the
 current player-private search?
 
+This is a historical ten-label snapshot. The active player-private catalog was
+later expanded to 25 labels; these results must not be reported as evidence
+for the expanded catalog.
+
 ## Frozen implementation
 
 The `audited-uniform/v1` provider:

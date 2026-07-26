@@ -7,17 +7,32 @@ import {
 import type { DrawbackRule } from "./types.js";
 
 /**
- * Version-one rule allowlist for player-private capturable-king simulation.
+ * Version-two rule allowlist for player-private capturable-king simulation.
  *
  * Membership means the rule has authority-specific integration coverage. It
  * does not upgrade the individual rule's verification status.
  */
 export const AUDITED_CAPTURABLE_KING_RULE_IDS = [
   "vegan",
+  "true-gentleman",
+  "false-prophets",
+  "trophy-wife",
   "lame-duck",
+  "cess",
+  "forward-march",
   "checkers",
+  "pacman",
+  "oddball",
+  "even-keeled",
   "truant",
   "spice-of-life",
+  "quit-horsing-around",
+  "remorseful",
+  "battle-fatigue",
+  "eye-for-an-eye",
+  "barbarian-rage",
+  "conscientious-objectors",
+  "horse-tranquilizer",
   "femme-fatale",
   "nurturer",
   "triple-play",

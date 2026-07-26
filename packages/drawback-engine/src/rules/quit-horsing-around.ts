@@ -13,6 +13,7 @@ export const quitHorsingAroundRule: DrawbackRule<
   name: "Quit Horsing Around",
   description: "After moving a knight, the next move cannot be made by any knight.",
   verification: "implemented-unverified",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   generateParameters: () => ({}),
   initialize: () => ({ previousMoveWasKnight: false }),
   filterLegalMoves: (context, moves) =>

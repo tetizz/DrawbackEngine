@@ -25,6 +25,7 @@ export function defineCaptureParityRule(configuration: {
     name: configuration.name,
     description: `The player can capture only on ${configuration.parity}-numbered fullmoves.`,
     verification: "implemented-unverified",
+    supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
     generateParameters: () => ({}),
     initialize: () => ({ movesApplied: 0 }),
     filterLegalMoves: (context, moves) => {

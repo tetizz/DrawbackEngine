@@ -10,6 +10,7 @@ export const pacmanRule: DrawbackRule<StatelessRuleState, NoParameters> = {
   name: "Pacman",
   description: "If an ordinary legal pawn capture exists, the player must make one.",
   verification: "implemented-unverified",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   generateParameters: () => ({}),
   initialize: () => ({ movesApplied: 0 }),
   filterLegalMoves: (_context, moves) => {

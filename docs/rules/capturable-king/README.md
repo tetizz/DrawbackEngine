@@ -9,6 +9,13 @@ scoped to `capturable-king/v1` and remains `implemented-unverified`. Community
 wording and the pinned InvalidSE/DrawbackDetector observations corroborate the
 displayed text, but neither source is an official executable specification.
 
+The player-private authority catalog also includes the 20 rules from the
+initial implementation milestone. Their capturable-king compatibility audit is
+specified separately in
+[`initial-milestone-compatibility.md`](initial-milestone-compatibility.md).
+Together these two audited groups currently expose 25 labels to simulation and
+symbolic opponent reconstruction.
+
 The machine-readable rules live in
 `data/catalog/capturable-king-drawbacks-v3.json`. The authority-scoped objects
 are intentionally not added to the frozen 182-class standard-authority v2

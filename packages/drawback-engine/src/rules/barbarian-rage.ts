@@ -10,6 +10,7 @@ export const barbarianRageRule: DrawbackRule<BarbarianRageState, NoParameters> =
   name: "Barbarian Rage",
   description: "After capturing, the player must capture again on the next turn if able.",
   verification: "implemented-unverified",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   generateParameters: () => ({}),
   initialize: () => ({ previousMoveWasCapture: false }),
   filterLegalMoves: (context, moves) => {

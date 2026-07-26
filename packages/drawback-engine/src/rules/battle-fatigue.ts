@@ -96,6 +96,7 @@ export const battleFatigueRule: DrawbackRule<BattleFatigueState, NoParameters> =
   name: "Battle Fatigue",
   description: "A piece that captures cannot capture again until it moves without capturing.",
   verification: "implemented-unverified",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   generateParameters: () => ({}),
   initialize: initialState,
   filterLegalMoves: (context, moves) => {

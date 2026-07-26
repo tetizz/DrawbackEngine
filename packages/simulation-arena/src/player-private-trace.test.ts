@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION,
   encodePlayerPrivateSimulationTraceRecord,
   parsePlayerPrivateSimulationTraceRecord,
 } from "@drawbackengine/simulation-trace";
@@ -45,7 +46,7 @@ const scriptedSearchAgent: PlayerPrivateSimulationAgent = Object.freeze({
   },
 });
 
-describe("player-private simulation trace v1", () => {
+describe("player-private simulation trace", () => {
   it("round-trips a castling king-passant capture with full authority state", async () => {
     const vegan = resolvePlayerPrivateRule("vegan");
     const game = await simulatePlayerPrivateGame({
@@ -59,6 +60,13 @@ describe("player-private simulation trace v1", () => {
     const trace = createPlayerPrivateSimulationTrace(game, 7);
     const encoded = encodePlayerPrivateSimulationTraceRecord(trace);
 
+    expect(trace.schemaVersion).toBe(
+      PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION,
+    );
+    expect(trace.ruleset).toEqual({
+      kind: "audited-player-private",
+      version: PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION,
+    });
     expect(trace.plies[0]?.positionAfter.kingPassant).toEqual({
       victim: "white",
       kingSquare: "g1",
@@ -200,7 +208,7 @@ describe("player-private simulation trace v1", () => {
     ).toThrow("hypothesisPolicy is unsupported");
   });
 
-  it("accepts historical missing aggregation and rejects unknown aggregation", async () => {
+  it("accepts schema-v1 missing aggregation and rejects it from schema v2", async () => {
     const vegan = resolvePlayerPrivateRule("vegan");
     const game = await simulatePlayerPrivateGame({
       seed: 0x0a66_7e6a,
@@ -218,6 +226,11 @@ describe("player-private simulation trace v1", () => {
     );
     const historical = {
       ...trace,
+      schemaVersion: 1,
+      ruleset: {
+        kind: "audited-player-private",
+        version: 1,
+      },
       agents: {
         white: {
           ...trace.agents.white,
@@ -235,6 +248,12 @@ describe("player-private simulation trace v1", () => {
     expect(() =>
       parsePlayerPrivateSimulationTraceRecord({
         ...trace,
+        agents: historical.agents,
+      })
+    ).toThrow("must materialize opponentAggregation");
+    expect(() =>
+      parsePlayerPrivateSimulationTraceRecord({
+        ...trace,
         agents: {
           ...trace.agents,
           white: {
@@ -247,6 +266,53 @@ describe("player-private simulation trace v1", () => {
         },
       })
     ).toThrow("opponentAggregation");
+  });
+
+  it("binds the historical ten-label allowlist to ruleset version 1", async () => {
+    const vegan = resolvePlayerPrivateRule("vegan");
+    const game = await simulatePlayerPrivateGame({
+      seed: 0x1e6a_c001,
+      maxPlies: 1,
+      rules: { white: vegan, black: vegan },
+      whiteAgent: scriptedSearchAgent,
+      blackAgent: scriptedSearchAgent,
+    });
+    const trace = createPlayerPrivateSimulationTrace(game, 4);
+    const historical = {
+      ...trace,
+      schemaVersion: 1,
+      ruleset: {
+        kind: "audited-player-private",
+        version: 1,
+      },
+    };
+
+    expect(parsePlayerPrivateSimulationTraceRecord(historical))
+      .toEqual(historical);
+    expect(() =>
+      parsePlayerPrivateSimulationTraceRecord({
+        ...historical,
+        secrets: {
+          ...historical.secrets,
+          initial: {
+            ...historical.secrets.initial,
+            white: {
+              ...historical.secrets.initial.white,
+              drawbackId: "true-gentleman",
+            },
+          },
+        },
+      })
+    ).toThrow("outside capturable ruleset version 1");
+    expect(() =>
+      parsePlayerPrivateSimulationTraceRecord({
+        ...trace,
+        ruleset: {
+          kind: "audited-player-private",
+          version: 1,
+        },
+      })
+    ).toThrow("must match trace.schemaVersion");
   });
 
   it(

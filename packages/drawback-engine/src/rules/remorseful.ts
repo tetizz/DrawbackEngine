@@ -10,6 +10,7 @@ export const remorsefulRule: DrawbackRule<RemorsefulState, NoParameters> = {
   name: "Remorseful",
   description: "The player cannot capture on two consecutive turns.",
   verification: "implemented-unverified",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   generateParameters: () => ({}),
   initialize: () => ({ previousMoveWasCapture: false }),
   filterLegalMoves: (context, moves) =>

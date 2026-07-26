@@ -34,8 +34,10 @@ export type {
   TraceMove,
 } from "./types.js";
 export type {
+  PlayerPrivateRulesetVersion,
   PlayerPrivateSimulationTracePly,
   PlayerPrivateSimulationTraceRecord,
+  PlayerPrivateSimulationTraceSchemaVersion,
   TracePlayerPrivateAgent,
   TracePlayerPrivateSearchPolicy,
   TraceRuleSecret,

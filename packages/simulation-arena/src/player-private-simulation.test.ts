@@ -9,6 +9,7 @@ import {
 import {
   auditedUniformOpponentHypotheses,
   createPlayerPrivateSearchAgent,
+  PLAYER_PRIVATE_RULE_IDS,
   resolvePlayerPrivateRule,
   simulatePlayerPrivateGame,
   type PlayerPrivateAgentView,
@@ -253,7 +254,7 @@ describe("player-private capturable-king simulation", () => {
     }
 
     expect(game.hypothesisPolicyId).toBe("audited-uniform/v1");
-    expect(hypotheses).toHaveLength(11);
+    expect(hypotheses).toHaveLength(PLAYER_PRIVATE_RULE_IDS.length + 1);
     expect(
       hypotheses.reduce((sum, hypothesis) => sum + hypothesis.probability, 0),
     ).toBeCloseTo(1, 12);
@@ -265,9 +266,12 @@ describe("player-private capturable-king simulation", () => {
         (massByRule.get(ruleId) ?? 0) + hypothesis.probability,
       );
     }
-    expect(massByRule.size).toBe(10);
+    expect(massByRule.size).toBe(PLAYER_PRIVATE_RULE_IDS.length);
     for (const probability of massByRule.values()) {
-      expect(probability).toBeCloseTo(0.1, 12);
+      expect(probability).toBeCloseTo(
+        1 / PLAYER_PRIVATE_RULE_IDS.length,
+        12,
+      );
     }
     expect(
       hypotheses.filter(
@@ -330,7 +334,7 @@ describe("player-private capturable-king simulation", () => {
     ).toBeCloseTo(1, 12);
     expect(new Set(
       survivors.map(({ capability }) => capability.drawbackId),
-    ).size).toBe(9);
+    ).size).toBe(PLAYER_PRIVATE_RULE_IDS.length - 1);
   });
 
   it("rejects an agent move outside the exact coordinator mask", async () => {

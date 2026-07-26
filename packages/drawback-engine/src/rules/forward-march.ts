@@ -12,6 +12,7 @@ export const forwardMarchRule = defineMoveFilterRule({
   id: "forward-march",
   name: "Forward March",
   description: "The player cannot move a primary piece toward its home rank.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) => {
     const progress = rank(move.to) - rank(move.from);
     return move.color === "white" ? progress >= 0 : progress <= 0;

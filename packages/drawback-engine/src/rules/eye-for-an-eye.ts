@@ -21,6 +21,7 @@ export const eyeForAnEyeRule: DrawbackRule<EyeForAnEyeState, NoParameters> = {
   name: "Eye for an Eye",
   description: "If the opponent captured, the player must capture next or lose.",
   verification: "implemented-unverified",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   generateParameters: () => ({}),
   initialize: () => ({ movesApplied: 0 }),
   filterLegalMoves: (context, moves) =>

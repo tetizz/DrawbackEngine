@@ -7,7 +7,7 @@ one complete game with a deterministic game ID derived from its unsigned
 ply limit and whether public evaluator facts are absent or uniformly present.
 
 Player-private capturable-king games use the separate
-`drawbackengine-player-private-simulation-trace` schema version 1. The
+`drawbackengine-player-private-simulation-trace` schema version 2. The
 orthodox contract is not widened or reinterpreted. The capturable contract has
 its own namespaced game IDs and records full public authority snapshots before
 and after every move so FEN, the one-reply castling king-passant right,
@@ -24,15 +24,21 @@ The orthodox version 1 explicitly identifies `standard-chess/v1`. It represents 
 `chess.js` simulation kernel, including ordinary check legality and standard
 ending rules. It rejects capturable-king games.
 
-The capturable version 1 explicitly identifies `capturable-king/v1`, audited
-player-private ruleset version 1, domain-separated Mulberry32 random policy
+The current capturable version 2 explicitly identifies `capturable-king/v1`,
+audited player-private ruleset version 2, domain-separated Mulberry32 random policy
 version 1, and one explicit opponent-hypothesis policy: either the conservative
 `unrestricted-baseline` version 1 control or the public-replay
-`audited-uniform` version 1 model. It accepts only the ten rules with current
+`audited-uniform` version 1 model. It accepts only the 25 rules with current
 capturable-authority integration audits. The trace records distinct White and
 Black parameter RNG seeds separately from the gameplay/agent seed. This
 allowlist is centralized in `drawback-engine`; it does not upgrade those rules
 from `implemented-unverified`.
+
+The parser retains schema/ruleset version 1 for historical ten-label traces.
+Version 1 rejects every label outside that original allowlist. Version 2 binds
+the expanded 25-label allowlist and requires its ruleset version to match the
+trace schema, preventing a corpus from silently changing label meaning under
+an old version number.
 
 Both wire formats use UCI strings for legal masks and `{ uci, san }` for the
 observed move. Result objects retain the tagged `SessionResult`
@@ -140,14 +146,14 @@ check-obligation sequences that are too rare in shallow ordinary-start
 self-play. The profile ID is preserved in the agent search-policy provenance.
 
 The named `audited-opponent-v1` profile uses ordinary starts and the complete
-ten-label schedule while replacing the unrestricted control with an equal
+25-label schedule while replacing the unrestricted control with an equal
 audited prior. Public replay eliminates exactly contradicted label/parameter
 particles and renormalizes survivors before search. It explicitly retains
 `worst-case` aggregation after `posterior-expected` failed its first
 validation-position promotion gate. The hypothesis source is recorded in
 `hypothesisPolicy`, while aggregation is recorded in each agent search policy.
-Trace schema version 1 remains backward compatible with historical records as
-described above.
+Trace schema version 2 is the current producer format; the parser remains
+backward compatible with historical version-1 records as described above.
 
 `streamPlayerPrivateAssignmentsParallel` retains at most one configured
 assignment window, emits strictly increasing global indexes, and is

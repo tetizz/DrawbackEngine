@@ -164,13 +164,15 @@ agent. Worker requests contain a serializable fixed-node policy; each worker
 constructs its own evaluator and runtime capabilities. Explicit assignments
 remain byte-identical across worker counts.
 
-The player-private catalog currently contains only the ten rules audited for
-`capturable-king/v1`. Unsupported rules fail closed. The default public
+The player-private catalog currently contains 25 rules audited for
+`capturable-king/v1`: the complete 20-rule initial milestone plus five rules
+whose definitions explicitly depend on literal king capture. Unsupported
+rules fail closed. The default public
 opponent model is the unrestricted hypothesis; a predictor can supply a
 public-only posterior without changing the agent boundary.
 
 The opt-in `audited-opponent-v1` simulation profile replaces that control with
-an equal prior over all ten audited labels. Triple Play's bishop and knight
+an equal prior over all 25 audited labels. Triple Play's bishop and knight
 parameter particles split one label's mass rather than counting as two labels.
 Before every turn, each candidate runtime is reconstructed solely from the
 authenticated public replay. A candidate that had already lost or forbids an
@@ -198,7 +200,7 @@ gameplay randomness rather than label or hidden-parameter randomness, and the
 worker response must reproduce the assigned canonical FEN exactly.
 
 `createPlayerPrivateSimulationTrace` now projects those results into the
-separate `drawbackengine-player-private-simulation-trace` version 1 contract.
+separate `drawbackengine-player-private-simulation-trace` version 2 contract.
 It records complete capturable authority snapshots, including king-passant
 state, and passes every record through a semantic parser that rebuilds the
 parameters, state transitions, legal masks, moves, and terminal result through
@@ -209,7 +211,8 @@ the executable session. The orthodox trace version remains unchanged.
 - Add the leakage-checked capturable dataset adapter in DrawbackGuesser before
   these records are accepted into neural-model training.
 - Bind evaluator and hypothesis-manifest digests into trace provenance.
-- Extend the capturable authority audit beyond the current ten-rule catalog.
+- Extend the capturable authority audit beyond the initial milestone and five
+  literal-king-capture rules.
 - Replace the equal audited prior with a calibrated public Guesser posterior
   after its held-out reliability is adequate.
 - Add evaluator-backed drawbacks without weakening the private capability

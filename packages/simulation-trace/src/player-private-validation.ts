@@ -19,7 +19,8 @@ import {
 } from "./player-private-semantic-replay.js";
 import {
   PLAYER_PRIVATE_SIMULATION_TRACE_FORMAT,
-  PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION,
+  type PlayerPrivateRulesetVersion,
+  type PlayerPrivateSimulationTraceSchemaVersion,
   type PlayerPrivateSimulationTraceRecord,
 } from "./player-private-types.js";
 
@@ -55,20 +56,19 @@ export function parsePlayerPrivateSimulationTraceRecord(
   if (object.format !== PLAYER_PRIVATE_SIMULATION_TRACE_FORMAT) {
     throw new TypeError("trace.format is unsupported.");
   }
-  if (
-    object.schemaVersion
-    !== PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION
-  ) {
-    throw new TypeError("trace.schemaVersion is unsupported.");
+  const schemaVersion = traceSchemaVersionAt(object.schemaVersion);
+  const rulesetVersion = rulesetVersionAt(
+    object.ruleset,
+    "trace.ruleset",
+  );
+  if (rulesetVersion !== schemaVersion) {
+    throw new TypeError(
+      "trace.ruleset.version must match trace.schemaVersion.",
+    );
   }
   if (object.authorityId !== "capturable-king/v1") {
     throw new TypeError("trace.authorityId is unsupported.");
   }
-  requireLiteralPolicy(
-    object.ruleset,
-    "trace.ruleset",
-    "audited-player-private",
-  );
   requireLiteralPolicy(
     object.randomPolicy,
     "trace.randomPolicy",
@@ -92,7 +92,12 @@ export function parsePlayerPrivateSimulationTraceRecord(
     throw new TypeError("trace.plies must be an array.");
   }
   const plies = object.plies.map((entry, index) =>
-    playerPrivatePlyAt(entry, index, `trace.plies[${String(index)}]`));
+    playerPrivatePlyAt(
+      entry,
+      index,
+      `trace.plies[${String(index)}]`,
+      rulesetVersion,
+    ));
   if (plies.length > plyLimit) {
     throw new TypeError("trace.plies cannot exceed trace.plyLimit.");
   }
@@ -105,7 +110,11 @@ export function parsePlayerPrivateSimulationTraceRecord(
     "trace.finalPosition",
   );
   validatePositionChain(initialPosition, finalPosition, plies);
-  const secrets = playerPrivateSecretsAt(object.secrets, "trace.secrets");
+  const secrets = playerPrivateSecretsAt(
+    object.secrets,
+    "trace.secrets",
+    rulesetVersion,
+  );
   validateSecretIdentity(secrets, plies);
   const expectedGameId = playerPrivateSimulationGameId(
     seed,
@@ -134,11 +143,33 @@ export function parsePlayerPrivateSimulationTraceRecord(
   }
   const agentsObject = objectAt(object.agents, "trace.agents");
   exactKeys(agentsObject, ["white", "black"], [], "trace.agents");
+  const whiteAgent = playerPrivateAgentAt(
+    agentsObject.white,
+    "trace.agents.white",
+  );
+  const blackAgent = playerPrivateAgentAt(
+    agentsObject.black,
+    "trace.agents.black",
+  );
+  if (
+    schemaVersion >= 2
+    && (
+      whiteAgent.searchPolicy.opponentAggregation === undefined
+      || blackAgent.searchPolicy.opponentAggregation === undefined
+    )
+  ) {
+    throw new TypeError(
+      "Schema-v2 trace agents must materialize opponentAggregation.",
+    );
+  }
   const record: PlayerPrivateSimulationTraceRecord = {
     format: PLAYER_PRIVATE_SIMULATION_TRACE_FORMAT,
-    schemaVersion: PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION,
+    schemaVersion,
     authorityId: "capturable-king/v1",
-    ruleset: { kind: "audited-player-private", version: 1 },
+    ruleset: {
+      kind: "audited-player-private",
+      version: rulesetVersion,
+    },
     randomPolicy: {
       kind: "explicit-parameter-seeds-domain-agent-mulberry32",
       version: 1,
@@ -155,19 +186,37 @@ export function parsePlayerPrivateSimulationTraceRecord(
     hypothesisPolicy,
     secrets,
     agents: {
-      white: playerPrivateAgentAt(
-        agentsObject.white,
-        "trace.agents.white",
-      ),
-      black: playerPrivateAgentAt(
-        agentsObject.black,
-        "trace.agents.black",
-      ),
+      white: whiteAgent,
+      black: blackAgent,
     },
     plies,
   };
   validatePlayerPrivateSemanticReplay(record);
   return record;
+}
+
+function traceSchemaVersionAt(
+  value: unknown,
+): PlayerPrivateSimulationTraceSchemaVersion {
+  if (value !== 1 && value !== 2) {
+    throw new TypeError("trace.schemaVersion is unsupported.");
+  }
+  return value;
+}
+
+function rulesetVersionAt(
+  value: unknown,
+  path: string,
+): PlayerPrivateRulesetVersion {
+  const policy = objectAt(value, path);
+  exactKeys(policy, ["kind", "version"], [], path);
+  if (
+    policy.kind !== "audited-player-private"
+    || (policy.version !== 1 && policy.version !== 2)
+  ) {
+    throw new TypeError(`${path} is unsupported.`);
+  }
+  return policy.version;
 }
 
 function hypothesisPolicyAt(

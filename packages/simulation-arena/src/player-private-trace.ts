@@ -100,7 +100,7 @@ export function createPlayerPrivateSimulationTrace(
     authorityId: "capturable-king/v1",
     ruleset: {
       kind: "audited-player-private",
-      version: 1,
+      version: PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION,
     },
     randomPolicy: SIMULATION_RANDOM_POLICY,
     gameIndex,

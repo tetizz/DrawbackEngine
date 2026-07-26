@@ -20,14 +20,29 @@ import {
 import type {
   PlayerPrivateSimulationTracePly,
   PlayerPrivateSimulationTraceRecord,
+  PlayerPrivateRulesetVersion,
   TracePlayerPrivateAgent,
   TracePlayerPrivateSearchPolicy,
   TraceRuleSecret,
 } from "./player-private-types.js";
 
+const PLAYER_PRIVATE_RULESET_V1_IDS: ReadonlySet<string> = new Set([
+  "vegan",
+  "lame-duck",
+  "checkers",
+  "truant",
+  "spice-of-life",
+  "femme-fatale",
+  "nurturer",
+  "triple-play",
+  "you-best-not-miss",
+  "irresistible",
+]);
+
 export function playerPrivateSecretAt(
   value: unknown,
   path: string,
+  rulesetVersion: PlayerPrivateRulesetVersion,
 ): TraceRuleSecret {
   const object = objectAt(value, path);
   exactKeys(
@@ -37,9 +52,15 @@ export function playerPrivateSecretAt(
     path,
   );
   const drawbackId = stringAt(object.drawbackId, `${path}.drawbackId`);
-  if (!isAuditedCapturableKingRuleId(drawbackId)) {
+  if (
+    !isAuditedCapturableKingRuleId(drawbackId)
+    || (
+      rulesetVersion === 1
+      && !PLAYER_PRIVATE_RULESET_V1_IDS.has(drawbackId)
+    )
+  ) {
     throw new TypeError(
-      `${path}.drawbackId is outside the audited capturable-king ruleset.`,
+      `${path}.drawbackId is outside capturable ruleset version ${String(rulesetVersion)}.`,
     );
   }
   return {
@@ -103,6 +124,7 @@ export function playerPrivatePlyAt(
   value: unknown,
   index: number,
   path: string,
+  rulesetVersion: PlayerPrivateRulesetVersion,
 ): PlayerPrivateSimulationTracePly {
   const object = objectAt(value, path);
   exactKeys(
@@ -194,6 +216,7 @@ export function playerPrivatePlyAt(
     activeSecret: playerPrivateSecretAt(
       object.activeSecret,
       `${path}.activeSecret`,
+      rulesetVersion,
     ),
   };
 }
@@ -201,12 +224,21 @@ export function playerPrivatePlyAt(
 export function playerPrivateSecretsAt(
   value: unknown,
   path: string,
+  rulesetVersion: PlayerPrivateRulesetVersion,
 ): PlayerPrivateSimulationTraceRecord["secrets"] {
   const object = objectAt(value, path);
   exactKeys(object, ["initial", "final"], [], path);
   return {
-    initial: colorsAt(object["initial"], `${path}.initial`),
-    final: colorsAt(object["final"], `${path}.final`),
+    initial: colorsAt(
+      object["initial"],
+      `${path}.initial`,
+      rulesetVersion,
+    ),
+    final: colorsAt(
+      object["final"],
+      `${path}.final`,
+      rulesetVersion,
+    ),
   };
 }
 
@@ -315,12 +347,21 @@ function searchPolicyAt(
 function colorsAt(
   value: unknown,
   path: string,
+  rulesetVersion: PlayerPrivateRulesetVersion,
 ): { readonly white: TraceRuleSecret; readonly black: TraceRuleSecret } {
   const object = objectAt(value, path);
   exactKeys(object, ["white", "black"], [], path);
   return {
-    white: playerPrivateSecretAt(object.white, `${path}.white`),
-    black: playerPrivateSecretAt(object.black, `${path}.black`),
+    white: playerPrivateSecretAt(
+      object.white,
+      `${path}.white`,
+      rulesetVersion,
+    ),
+    black: playerPrivateSecretAt(
+      object.black,
+      `${path}.black`,
+      rulesetVersion,
+    ),
   };
 }
 

@@ -13,7 +13,10 @@ import type {
 
 export const PLAYER_PRIVATE_SIMULATION_TRACE_FORMAT =
   "drawbackengine-player-private-simulation-trace" as const;
-export const PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION = 1 as const;
+export const PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION = 2 as const;
+
+export type PlayerPrivateSimulationTraceSchemaVersion = 1 | 2;
+export type PlayerPrivateRulesetVersion = 1 | 2;
 
 export interface TraceRuleSecret {
   readonly drawbackId: AuditedCapturableKingRuleId;
@@ -69,12 +72,11 @@ export interface PlayerPrivateSimulationTracePly {
  */
 export interface PlayerPrivateSimulationTraceRecord {
   readonly format: typeof PLAYER_PRIVATE_SIMULATION_TRACE_FORMAT;
-  readonly schemaVersion:
-    typeof PLAYER_PRIVATE_SIMULATION_TRACE_SCHEMA_VERSION;
+  readonly schemaVersion: PlayerPrivateSimulationTraceSchemaVersion;
   readonly authorityId: "capturable-king/v1";
   readonly ruleset: {
     readonly kind: "audited-player-private";
-    readonly version: 1;
+    readonly version: PlayerPrivateRulesetVersion;
   };
   readonly randomPolicy: {
     readonly kind: "explicit-parameter-seeds-domain-agent-mulberry32";
