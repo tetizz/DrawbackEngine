@@ -5,7 +5,7 @@ import type {
   PositionView,
   RuleRuntime,
 } from "@drawbackengine/drawback-engine";
-import type { PlayerColor, RandomSource } from "@drawbackengine/shared";
+import type { PlayerColor } from "@drawbackengine/shared";
 import { opposite } from "@drawbackengine/shared";
 import {
   CapturableKingPosition,
@@ -26,6 +26,10 @@ import {
   inspectPublicGameTrace,
   type PublicGameTrace,
 } from "./public-game-trace.js";
+import {
+  resolveSessionParameterRandomSources,
+  type SessionParameterRandomInput,
+} from "./session-random.js";
 
 export interface DrawbackMoveObservation {
   readonly authorityId: "capturable-king/v1";
@@ -107,7 +111,7 @@ export class DrawbackGameSession<
       BlackState,
       BlackParameters
     >,
-    rng: RandomSource,
+    random: SessionParameterRandomInput,
     fen?: string,
   ): DrawbackGameSession<
     WhiteState,
@@ -124,8 +128,12 @@ export class DrawbackGameSession<
       ply: 0,
       history: [],
     };
-    const whiteParameters = rules.white.generateParameters(rng);
-    const blackParameters = rules.black.generateParameters(rng);
+    const parameterRandom =
+      resolveSessionParameterRandomSources(random);
+    const whiteParameters =
+      rules.white.generateParameters(parameterRandom.white);
+    const blackParameters =
+      rules.black.generateParameters(parameterRandom.black);
     const session = new DrawbackGameSession(
       position,
       [],

@@ -15,6 +15,9 @@ import {
   searchIterativePlayerPrivateDrawbackMove,
 } from "./player-private-iterative-search.js";
 import {
+  selectIterativePlayerPrivateDrawbackMove,
+} from "./player-private-iterative-selection.js";
+import {
   createOwnPlayerRuleCapability,
   createPublicDrawbackHypothesis,
 } from "./player-private-capability.js";
@@ -125,6 +128,60 @@ describe("iterative player-private drawback search", () => {
     expect(JSON.stringify(first)).not.toMatch(
       /parameters|internalState|secret|trueDrawback|public-unrestricted-opponent/u,
     );
+  });
+
+  it("samples exactly once from only a completed exact-rule root set", async () => {
+    const position = CapturableKingPosition.fromFen();
+    let samples = 0;
+    const rng = {
+      next() {
+        samples += 1;
+        return 0.25;
+      },
+      integer() {
+        throw new Error("Temperature selection must not request an integer.");
+      },
+    };
+    const selected = await selectIterativePlayerPrivateDrawbackMove(
+      context(position),
+      drawbackMaterialEvaluator,
+      { maxDepth: 2, maxNodes: 60 },
+      rng,
+      { temperatureCp: 35, topK: 100 },
+    );
+
+    expect(samples).toBe(1);
+    expect(selected.search.completedDepth).toBe(1);
+    expect(selected.search.truncated).toBe(true);
+    expect(selected.search.rootMoves).toHaveLength(20);
+    expect(
+      selected.search.rootMoves.some(
+        ({ move }) => moveId(move) === moveId(selected.move),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a coordinator root-mask mismatch before sampling", async () => {
+    let samples = 0;
+    await expect(
+      selectIterativePlayerPrivateDrawbackMove(
+        context(CapturableKingPosition.fromFen()),
+        drawbackMaterialEvaluator,
+        { maxDepth: 1, maxNodes: 5_000 },
+        {
+          next() {
+            samples += 1;
+            return 0;
+          },
+          integer() {
+            throw new Error("Unexpected integer draw.");
+          },
+        },
+        { temperatureCp: 35 },
+        [],
+      ),
+    ).rejects.toThrow("coordinator legal mask");
+    expect(samples).toBe(0);
   });
 
   it("discards a partial deeper iteration and rejects a partial first iteration", async () => {

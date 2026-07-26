@@ -130,6 +130,9 @@ importers:
       '@drawbackengine/drawback-engine':
         specifier: workspace:*
         version: link:../drawback-engine
+      '@drawbackengine/drawback-search':
+        specifier: workspace:*
+        version: link:../drawback-search
       '@drawbackengine/shared':
         specifier: workspace:*
         version: link:../shared

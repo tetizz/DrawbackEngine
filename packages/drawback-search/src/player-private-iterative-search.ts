@@ -16,6 +16,7 @@ import type {
 import type { DrawbackLeafEvaluator } from "./types.js";
 
 const CACHE_HISTORY_MODES = new Set<string>(["full", "ignore"]);
+export const DEFAULT_PLAYER_PRIVATE_LEAF_CACHE_ENTRIES = 16_384;
 
 export type PlayerPrivateSearchContext = Omit<
   PlayerPrivateSearchInput,
@@ -85,7 +86,9 @@ export async function searchIterativePlayerPrivateDrawbackMove(
   throwIfAborted(limits.signal);
   const cachedEvaluator = createCachingLeafEvaluator({
     evaluator,
-    maxEntries: limits.leafCacheEntries ?? 16_384,
+    maxEntries:
+      limits.leafCacheEntries
+      ?? DEFAULT_PLAYER_PRIVATE_LEAF_CACHE_ENTRIES,
     historyMode: limits.leafCacheHistoryMode ?? "full",
   });
   const baseLimits = {

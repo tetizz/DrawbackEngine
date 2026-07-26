@@ -140,9 +140,11 @@ presented as authoritative.
 
 ## Determinism
 
-All random choices use an injected random source. Fixed seeds preserve rule
-parameters, assignments, agent choices, and simulation results. Catalog order
-is part of the reproducibility contract.
+All random choices use injected random sources. Simulations derive separate
+streams for each side's hidden parameters and for each player at each ply, so
+one rule or agent cannot shift another stream by consuming extra random values.
+Fixed seeds preserve assignments, parameters, agent choices, and results.
+Catalog order is part of the reproducibility contract.
 
 ## License
 

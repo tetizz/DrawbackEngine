@@ -7,7 +7,8 @@ import {
   type SessionRules,
 } from "@drawbackengine/chess-core";
 import type { ChessMove } from "@drawbackengine/drawback-engine";
-import { Mulberry32, type PlayerColor, type RandomSource } from "@drawbackengine/shared";
+import type { PlayerColor, RandomSource } from "@drawbackengine/shared";
+import { createSimulationRandomStreams } from "./random-streams.js";
 
 export interface AgentView {
   readonly color: PlayerColor;
@@ -133,8 +134,12 @@ export function simulateGame<
   }
 
   const seed = checkedSeed(config.seed);
-  const rng = new Mulberry32(seed);
-  const session = new GameSession(config.rules, rng, config.fen);
+  const random = createSimulationRandomStreams(seed);
+  const session = new GameSession(
+    config.rules,
+    random.parameters,
+    config.fen,
+  );
   const initialFen = session.fen;
   const plies: SimulationPly[] = [];
 
@@ -157,7 +162,7 @@ export function simulateGame<
         legalMoves: [...legalMoves],
         history: session.history(),
       },
-      rng,
+      random.agent(color, plies.length),
     );
     const outcome = session.move(toCommand(selected));
     if (!outcome.ok) {

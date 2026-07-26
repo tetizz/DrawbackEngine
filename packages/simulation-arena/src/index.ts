@@ -16,6 +16,50 @@ export {
 } from "./agents.js";
 export type { TemperatureAgentOptions } from "./agents.js";
 export { deriveGameSeed, simulateBatch, simulateCatalogBatch } from "./batch.js";
+export { createSimulationRandomStreams } from "./random-streams.js";
+export type { SimulationRandomStreams } from "./random-streams.js";
+export { createPlayerPrivateSearchAgent } from "./player-private-agent.js";
+export type {
+  PlayerPrivateAgentSearchPolicy,
+  PlayerPrivateAgentView,
+  PlayerPrivateSearchAgentOptions,
+  PlayerPrivateSimulationAgent,
+} from "./player-private-agent.js";
+export { simulatePlayerPrivateGame } from "./player-private-simulation.js";
+export {
+  unrestrictedOpponentHypotheses,
+} from "./player-private-simulation.js";
+export type {
+  PlayerPrivateAgentSnapshot,
+  PlayerPrivateSimulationConfig,
+  PlayerPrivateSimulationPly,
+  PlayerPrivateSimulationResult,
+  PublicOpponentHypothesisProvider,
+  PublicOpponentHypothesisRequest,
+} from "./player-private-simulation.js";
+export {
+  simulatePlayerPrivateAssignmentsParallel,
+} from "./player-private-parallel.js";
+export {
+  assertPlayerPrivateWorkerRequest,
+} from "./player-private-parallel-protocol.js";
+export {
+  assertPlayerPrivateWorkerResponse,
+} from "./player-private-result-validation.js";
+export type {
+  PlayerPrivateAssignmentBatchRequest,
+  PlayerPrivateGameAssignment,
+  PlayerPrivateSearchPolicy,
+  PlayerPrivateWorkerRequest,
+  PlayerPrivateWorkerResponse,
+} from "./player-private-parallel-protocol.js";
+export {
+  PLAYER_PRIVATE_RULE_IDS,
+  resolvePlayerPrivateRule,
+} from "./player-private-catalog.js";
+export type {
+  PlayerPrivateRuleId,
+} from "./player-private-catalog.js";
 export type { BatchConfig, CatalogBatchConfig } from "./batch.js";
 export {
   CATALOG_AGENT_IDS,

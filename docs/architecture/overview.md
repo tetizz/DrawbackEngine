@@ -39,7 +39,20 @@ If standard chess supplies at least one legal move but the active drawback filte
 
 ## Determinism
 
-All random choices receive an injected `RandomSource`. The initial implementation uses Mulberry32 with an unsigned 32-bit seed. Catalog batches derive one seed per game, then independently select White and Black rules and agent profiles from stable ordered catalogs. Simulation records retain their seed, selected rules, generated parameters, active agent ID/style/strength, pre-move rule state, pre-move FEN, and normalized move.
+All random choices receive an injected `RandomSource`. The implementation uses
+Mulberry32 with an unsigned 32-bit seed. Simulation derives independent streams
+for White parameters, Black parameters, and each color at each ply. A rule
+parameter generator or agent can therefore consume a different number of
+random values without shifting either player's later moves. This separation is
+also a training-data requirement: hidden-label RNG consumption must not become
+a shortcut feature.
+
+Catalog batches derive one seed per game and select rules and agent profiles
+from stable ordered catalogs. Balanced training corpora use explicit
+assignments so labels are chosen independently from gameplay seeds. Simulation
+records retain their seed, selected rules, generated parameters, active agent
+ID/style/strength, pre-move rule state, pre-move FEN, and normalized move; seed
+and secret fields remain labels or provenance and never model inputs.
 
 ## Rule verification
 

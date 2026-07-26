@@ -22,6 +22,10 @@ export type {
   SessionRules,
 } from "./game-session.js";
 export type {
+  SessionParameterRandomInput,
+  SessionParameterRandomSources,
+} from "./session-random.js";
+export type {
   CapturableKingMoveResult,
   CapturableKingPositionSnapshot,
   CapturableKingTerminal,

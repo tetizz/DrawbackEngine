@@ -8,7 +8,7 @@ import {
 import type {
   ExternalTurnConstraintProvider,
 } from "@drawbackengine/drawback-engine";
-import { Mulberry32, type RandomSource } from "@drawbackengine/shared";
+import type { RandomSource } from "@drawbackengine/shared";
 import type {
   AgentView,
   SimulationAgent,
@@ -16,6 +16,7 @@ import type {
   SimulationPly,
   SimulationResult,
 } from "./simulation.js";
+import { createSimulationRandomStreams } from "./random-streams.js";
 
 export interface AsyncSimulationAgent {
   readonly id: string;
@@ -109,8 +110,8 @@ export async function simulateGameAsync<
   }
 
   const seed = checkedSeed(config.seed);
-  const rng = new Mulberry32(seed);
-  const session = await AsyncGameSession.create(config.rules, rng, {
+  const random = createSimulationRandomStreams(seed);
+  const session = await AsyncGameSession.create(config.rules, random.parameters, {
     ...(config.fen === undefined ? {} : { fen: config.fen }),
     ...(config.turnConstraintProvider === undefined
       ? {}
@@ -138,7 +139,7 @@ export async function simulateGameAsync<
         legalMoves: [...legalMoves],
         history: session.history(),
       },
-      rng,
+      random.agent(color, plies.length),
     );
     let outcome: MoveOutcome;
     try {

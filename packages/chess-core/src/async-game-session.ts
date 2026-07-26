@@ -9,7 +9,7 @@ import type {
   ExternalTurnConstraintProvider,
   PositionView,
 } from "@drawbackengine/drawback-engine";
-import type { PlayerColor, RandomSource } from "@drawbackengine/shared";
+import type { PlayerColor } from "@drawbackengine/shared";
 import { opposite } from "@drawbackengine/shared";
 import {
   type MoveAccepted,
@@ -19,6 +19,10 @@ import {
   type SessionResult,
 } from "./game-session.js";
 import { playerColor, sameMove, toChessMove } from "./move-adapter.js";
+import {
+  resolveSessionParameterRandomSources,
+  type SessionParameterRandomInput,
+} from "./session-random.js";
 
 export type PreparedSessionRule<State, Parameters> =
   | DrawbackRule<State, Parameters>
@@ -105,14 +109,18 @@ export class AsyncGameSession<
       BlackState,
       BlackParameters
     >,
-    rng: RandomSource,
+    random: SessionParameterRandomInput,
     options: AsyncGameSessionOptions,
   ) {
     this.#chess =
       options.fen === undefined ? new Chess() : new Chess(options.fen);
     this.#provider = options.provider;
-    const whiteParameters = rules.white.generateParameters(rng);
-    const blackParameters = rules.black.generateParameters(rng);
+    const parameterRandom =
+      resolveSessionParameterRandomSources(random);
+    const whiteParameters =
+      rules.white.generateParameters(parameterRandom.white);
+    const blackParameters =
+      rules.black.generateParameters(parameterRandom.black);
     const position = this.position();
     this.#white = {
       rule: rules.white,
@@ -146,7 +154,7 @@ export class AsyncGameSession<
       BlackState,
       BlackParameters
     >,
-    rng: RandomSource,
+    random: SessionParameterRandomInput,
     options: AsyncGameSessionOptions = {},
   ): Promise<
     AsyncGameSession<
@@ -156,7 +164,7 @@ export class AsyncGameSession<
       BlackParameters
     >
   > {
-    const session = new AsyncGameSession(rules, rng, options);
+    const session = new AsyncGameSession(rules, random, options);
     await session.#ensurePrepared(false);
     return session;
   }

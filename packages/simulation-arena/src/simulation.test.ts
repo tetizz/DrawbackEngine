@@ -79,6 +79,83 @@ describe("simulateGame", () => {
     ).toThrow(RangeError);
   });
 
+  it("does not let parameter-generator draw counts shift agent moves", () => {
+    const noisyParametersRule = {
+      ...unrestrictedRule,
+      id: "noisy-unrestricted",
+      generateParameters(rng: Parameters<
+        typeof unrestrictedRule.generateParameters
+      >[0]) {
+        for (let index = 0; index < 127; index += 1) {
+          rng.next();
+        }
+        return {};
+      },
+    };
+    const baseline = simulateGame({
+      seed: 0x71a1_5eed,
+      maxPlies: 20,
+      rules: { white: unrestrictedRule, black: unrestrictedRule },
+      whiteAgent: randomLegalAgent,
+      blackAgent: randomLegalAgent,
+    });
+    const noisy = simulateGame({
+      seed: 0x71a1_5eed,
+      maxPlies: 20,
+      rules: { white: noisyParametersRule, black: unrestrictedRule },
+      whiteAgent: randomLegalAgent,
+      blackAgent: randomLegalAgent,
+    });
+
+    expect(noisy.plies.map(({ observation }) => observation.move)).toEqual(
+      baseline.plies.map(({ observation }) => observation.move),
+    );
+  });
+
+  it("does not let one agent's RNG consumption shift either side's later moves", () => {
+    const firstLegalAgent: SimulationAgent = {
+      id: "first-legal",
+      chooseMove(view) {
+        const move = view.legalMoves[0];
+        if (move === undefined) {
+          throw new Error("Expected a legal move.");
+        }
+        return move;
+      },
+    };
+    const noisyFirstLegalAgent: SimulationAgent = {
+      id: "noisy-first-legal",
+      chooseMove(view, rng) {
+        for (let index = 0; index < 257; index += 1) {
+          rng.next();
+        }
+        const move = view.legalMoves[0];
+        if (move === undefined) {
+          throw new Error("Expected a legal move.");
+        }
+        return move;
+      },
+    };
+    const baseline = simulateGame({
+      seed: 0xa63e_0175,
+      maxPlies: 20,
+      rules: { white: unrestrictedRule, black: unrestrictedRule },
+      whiteAgent: firstLegalAgent,
+      blackAgent: randomLegalAgent,
+    });
+    const noisy = simulateGame({
+      seed: 0xa63e_0175,
+      maxPlies: 20,
+      rules: { white: unrestrictedRule, black: unrestrictedRule },
+      whiteAgent: noisyFirstLegalAgent,
+      blackAgent: randomLegalAgent,
+    });
+
+    expect(noisy.plies.map(({ observation }) => observation.move)).toEqual(
+      baseline.plies.map(({ observation }) => observation.move),
+    );
+  });
+
   it("accepts seed zero and rejects seeds outside the serialized domain", () => {
     const config = {
       maxPlies: 1,

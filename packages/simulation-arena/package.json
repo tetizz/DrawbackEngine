@@ -22,6 +22,7 @@
     "@drawbackengine/chess-core": "workspace:*",
     "@drawbackengine/chess-evaluator": "workspace:*",
     "@drawbackengine/drawback-engine": "workspace:*",
+    "@drawbackengine/drawback-search": "workspace:*",
     "@drawbackengine/simulation-trace": "workspace:*",
     "@drawbackengine/shared": "workspace:*"
   },

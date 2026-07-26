@@ -132,16 +132,45 @@ warning before its result. `--engine-kind fairy-stockfish` additionally
 requires the authenticated `--variant-path`; ordinary Stockfish remains
 available for orthodox-compatible leaves.
 
+## Player-private self-play
+
+`simulation-arena` now has a separate capturable-king self-play path. It does
+not reuse the orthodox `AgentView` or `GameSession`. The trusted coordinator
+mints only the active player's exact `OwnPlayerRuleCapability`, reconstructs
+opponent hypotheses from the authenticated public trace, and passes those
+capabilities to an asynchronous player-private agent. Raw rules, opponent
+parameters, opponent state, sessions, and game seeds are not part of that
+callback.
+
+Iterative search completes and scores every root before temperature sampling.
+Partial deeper iterations are discarded, and an incomplete first iteration or
+evaluator failure ends the simulation rather than falling back to a weaker
+agent. Worker requests contain a serializable fixed-node policy; each worker
+constructs its own evaluator and runtime capabilities. Explicit assignments
+remain byte-identical across worker counts.
+
+The player-private catalog currently contains only the ten rules audited for
+`capturable-king/v1`. Unsupported rules fail closed. The default public
+opponent model is the unrestricted hypothesis; a predictor can supply a
+public-only posterior without changing the agent boundary.
+
+Player-private results are privileged engine records. They retain initial and
+final secret snapshots for both colors so a game ending before one side moves
+still has complete labels. Those snapshots never enter an agent callback.
+Worker responses are accepted only when assignment labels, complete policy
+metadata, hypothesis-policy ID, ply/FEN continuity, terminal payload, and ply
+limit all match the immutable request. These in-memory records are not yet a
+training wire format.
+
 ## Remaining integration
 
-- Migrate the browser controller and simulator dataset schema to
-  `capturable-king/v1` authority observations.
-- Adapt the authority-aware symbolic posterior into executable public
-  hypothesis capabilities for the web and simulation controllers.
-- Extend the asynchronous session path for evaluator-backed drawbacks.
-- Version the capturable-king simulation rows before they are accepted into
-  neural-model training data.
+- Version a capturable-king private trace and dataset schema before these games
+  are accepted into neural-model training data.
+- Bind evaluator and hypothesis-manifest digests into trace provenance.
+- Extend the capturable authority audit beyond the current ten-rule catalog.
+- Add evaluator-backed drawbacks without weakening the private capability
+  boundary.
+- Migrate the browser controller to capturable-king observations.
 
-Until those items land, the existing web controller and ordinary simulation
-corpus remain on the orthodox compatibility session. No variant game is
-silently mislabeled as standard training data.
+The ordinary simulation corpus remains on the orthodox compatibility session.
+No variant game is silently mislabeled as standard training data.

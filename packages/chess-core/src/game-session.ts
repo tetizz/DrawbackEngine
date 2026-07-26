@@ -7,9 +7,13 @@ import type {
   PositionView,
   RuleRuntime,
 } from "@drawbackengine/drawback-engine";
-import type { PlayerColor, RandomSource } from "@drawbackengine/shared";
+import type { PlayerColor } from "@drawbackengine/shared";
 import { opposite } from "@drawbackengine/shared";
 import { playerColor, sameMove, toChessMove } from "./move-adapter.js";
+import {
+  resolveSessionParameterRandomSources,
+  type SessionParameterRandomInput,
+} from "./session-random.js";
 
 export interface MoveCommand {
   readonly from: string;
@@ -112,12 +116,16 @@ export class GameSession<
 
   public constructor(
     rules: SessionRules<WhiteState, WhiteParameters, BlackState, BlackParameters>,
-    rng: RandomSource,
+    random: SessionParameterRandomInput,
     fen?: string,
   ) {
     this.#chess = fen === undefined ? new Chess() : new Chess(fen);
-    const whiteParameters = rules.white.generateParameters(rng);
-    const blackParameters = rules.black.generateParameters(rng);
+    const parameterRandom =
+      resolveSessionParameterRandomSources(random);
+    const whiteParameters =
+      rules.white.generateParameters(parameterRandom.white);
+    const blackParameters =
+      rules.black.generateParameters(parameterRandom.black);
     const position = this.position();
     this.#white = {
       rule: rules.white,
