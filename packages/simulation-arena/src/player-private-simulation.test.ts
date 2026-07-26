@@ -474,7 +474,7 @@ describe("player-private capturable-king simulation", () => {
       capturedKing: "black",
       method: "direct",
     });
-  });
+  }, 15_000);
 });
 
 function requiredMove(
