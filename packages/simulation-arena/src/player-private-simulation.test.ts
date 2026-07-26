@@ -7,6 +7,7 @@ import {
   drawbackMaterialEvaluator,
 } from "@drawbackengine/drawback-search";
 import {
+  auditedUniformOpponentHypotheses,
   createPlayerPrivateSearchAgent,
   resolvePlayerPrivateRule,
   simulatePlayerPrivateGame,
@@ -220,6 +221,116 @@ describe("player-private capturable-king simulation", () => {
         },
       }),
     ).rejects.toThrow("no public opponent hypotheses");
+  });
+
+  it("reconstructs equal audited label mass without opponent secrets", async () => {
+    let capturedView: PlayerPrivateAgentView | undefined;
+    const inspectingAgent: PlayerPrivateSimulationAgent = {
+      id: "audited-opponent-inspector",
+      chooseMove(view) {
+        capturedView = view;
+        const move = view.legalMoves[0];
+        if (move === undefined) {
+          throw new Error("Expected an audited-policy legal move.");
+        }
+        return Promise.resolve(move);
+      },
+    };
+    const game = await simulatePlayerPrivateGame({
+      seed: 0x0dd1_7ed,
+      maxPlies: 1,
+      rules: {
+        white: resolvePlayerPrivateRule("vegan"),
+        black: resolvePlayerPrivateRule("triple-play"),
+      },
+      whiteAgent: inspectingAgent,
+      blackAgent: inspectingAgent,
+      opponentHypotheses: auditedUniformOpponentHypotheses,
+    });
+    const hypotheses = capturedView?.opponent;
+    if (hypotheses === undefined) {
+      throw new Error("Expected one captured audited opponent view.");
+    }
+
+    expect(game.hypothesisPolicyId).toBe("audited-uniform/v1");
+    expect(hypotheses).toHaveLength(11);
+    expect(
+      hypotheses.reduce((sum, hypothesis) => sum + hypothesis.probability, 0),
+    ).toBeCloseTo(1, 12);
+    const massByRule = new Map<string, number>();
+    for (const hypothesis of hypotheses) {
+      const ruleId = hypothesis.capability.drawbackId;
+      massByRule.set(
+        ruleId,
+        (massByRule.get(ruleId) ?? 0) + hypothesis.probability,
+      );
+    }
+    expect(massByRule.size).toBe(10);
+    for (const probability of massByRule.values()) {
+      expect(probability).toBeCloseTo(0.1, 12);
+    }
+    expect(
+      hypotheses.filter(
+        ({ capability }) => capability.drawbackId === "triple-play",
+      ),
+    ).toHaveLength(2);
+    expect(JSON.stringify(hypotheses)).not.toMatch(
+      /hidden|parameterSeeds|secret|reveal/u,
+    );
+  });
+
+  it("eliminates contradicted audited hypotheses and renormalizes survivors", async () => {
+    let secondView: PlayerPrivateAgentView | undefined;
+    const scriptedAgent: PlayerPrivateSimulationAgent = {
+      id: "audited-elimination-script",
+      chooseMove(view) {
+        if (view.ply === 1) {
+          secondView = view;
+        }
+        const move = view.ply === 0
+          ? view.legalMoves.find(
+              (candidate) =>
+                candidate.from === "e1" && candidate.to === "e2",
+            )
+          : view.legalMoves[0];
+        if (move === undefined) {
+          throw new Error("Expected a scripted audited-policy move.");
+        }
+        return Promise.resolve(move);
+      },
+    };
+
+    await simulatePlayerPrivateGame({
+      seed: 0x51a7_e001,
+      fen: "7k/8/8/8/8/8/8/4K3 w - - 0 1",
+      maxPlies: 2,
+      rules: {
+        white: resolvePlayerPrivateRule("vegan"),
+        black: resolvePlayerPrivateRule("vegan"),
+      },
+      whiteAgent: scriptedAgent,
+      blackAgent: scriptedAgent,
+      opponentHypotheses: auditedUniformOpponentHypotheses,
+    });
+    const survivors = secondView?.opponent;
+    if (survivors === undefined) {
+      throw new Error("Expected the opponent's second-ply posterior.");
+    }
+
+    expect(
+      survivors.some(
+        ({ capability }) => capability.drawbackId === "lame-duck",
+      ),
+    ).toBe(false);
+    expect(
+      survivors.reduce(
+        (sum, hypothesis) => sum + hypothesis.probability,
+        0,
+      ),
+    ).toBeCloseTo(1, 12);
+    expect(new Set(
+      survivors.map(({ capability }) => capability.drawbackId),
+    ).size).toBe(9);
   });
 
   it("rejects an agent move outside the exact coordinator mask", async () => {

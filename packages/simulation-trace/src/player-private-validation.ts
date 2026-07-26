@@ -74,10 +74,9 @@ export function parsePlayerPrivateSimulationTraceRecord(
     "trace.randomPolicy",
     "explicit-parameter-seeds-domain-agent-mulberry32",
   );
-  requireLiteralPolicy(
+  const hypothesisPolicy = hypothesisPolicyAt(
     object.hypothesisPolicy,
     "trace.hypothesisPolicy",
-    "unrestricted-baseline",
   );
   const gameIndex = safeIntegerAt(object.gameIndex, "trace.gameIndex");
   const seed = safeIntegerAt(object.seed, "trace.seed");
@@ -153,10 +152,7 @@ export function parsePlayerPrivateSimulationTraceRecord(
     finalPosition,
     result,
     stoppedAtPlyLimit,
-    hypothesisPolicy: {
-      kind: "unrestricted-baseline",
-      version: 1,
-    },
+    hypothesisPolicy,
     secrets,
     agents: {
       white: playerPrivateAgentAt(
@@ -172,6 +168,27 @@ export function parsePlayerPrivateSimulationTraceRecord(
   };
   validatePlayerPrivateSemanticReplay(record);
   return record;
+}
+
+function hypothesisPolicyAt(
+  value: unknown,
+  path: string,
+): PlayerPrivateSimulationTraceRecord["hypothesisPolicy"] {
+  const policy = objectAt(value, path);
+  exactKeys(policy, ["kind", "version"], [], path);
+  if (
+    (
+      policy.kind !== "unrestricted-baseline"
+      && policy.kind !== "audited-uniform"
+    )
+    || policy.version !== 1
+  ) {
+    throw new TypeError(`${path} is unsupported.`);
+  }
+  return {
+    kind: policy.kind,
+    version: 1,
+  };
 }
 
 export function parsePlayerPrivateSimulationTraceLine(

@@ -398,6 +398,7 @@ describe("public hypothesis runtime boundaries", () => {
         authorityId: "capturable-king/v1",
         color: "white",
         drawbackId: "you-best-not-miss",
+        code: "observed-move-illegal",
       });
     }
   });

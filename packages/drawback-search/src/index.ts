@@ -65,6 +65,7 @@ export type {
   OwnPlayerRuleCapability,
   PublicHypothesisRuleCapability,
   PublicDrawbackHypothesis,
+  PublicRuleStateReconstructionFailure,
 } from "./player-private-capability.js";
 export type {
   IterativePlayerPrivateSearchLimits,

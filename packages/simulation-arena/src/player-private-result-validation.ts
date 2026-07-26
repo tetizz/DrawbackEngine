@@ -112,7 +112,11 @@ function validatePlayerPrivateResult(
     result["parameterSeeds"],
     assignment.parameterSeeds,
   );
-  if (result["hypothesisPolicyId"] !== "unrestricted-baseline/v1") {
+  const expectedHypothesisPolicyId =
+    policy.opponentHypotheses.kind === "audited-uniform"
+      ? "audited-uniform/v1"
+      : "unrestricted-baseline/v1";
+  if (result["hypothesisPolicyId"] !== expectedHypothesisPolicyId) {
     throw new TypeError(
       "Player-private result hypothesis provenance is invalid.",
     );

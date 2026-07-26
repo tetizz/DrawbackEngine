@@ -47,11 +47,13 @@ This means future forced captures, cooldowns, history restrictions, deadlines,
 and drawback losses are visible to the outer search. Stockfish does not get to
 override the rule engine.
 
-Rules must explicitly declare `capturable-king/v1` support. The first audited
-set is Unrestricted (test control), Vegan, Lame Duck, Checkers, Truant, and
-Spice of Life. A legacy rule with no declaration is rejected at session
-creation instead of being evaluated with accidental `chess.js` assumptions.
-Broader rule certification is part of the remaining migration.
+Rules must explicitly declare `capturable-king/v1` support. The audited
+player-private set is Vegan, Lame Duck, Checkers, Truant, Spice of Life,
+Femme Fatale, Nurturer, Triple Play, You Best Not Miss, and Irresistible.
+Unrestricted remains a test control but is not a hidden label. A legacy rule
+with no declaration is rejected at session creation instead of being
+evaluated with accidental `chess.js` assumptions. Broader rule certification
+is part of the remaining migration.
 
 ## King capture semantics
 
@@ -154,6 +156,17 @@ The player-private catalog currently contains only the ten rules audited for
 opponent model is the unrestricted hypothesis; a predictor can supply a
 public-only posterior without changing the agent boundary.
 
+The opt-in `audited-opponent-v1` simulation profile replaces that control with
+an equal prior over all ten audited labels. Triple Play's bishop and knight
+parameter particles split one label's mass rather than counting as two labels.
+Before every turn, each candidate runtime is reconstructed solely from the
+authenticated public replay. A candidate that had already lost or forbids an
+observed move is symbolically eliminated, and the remaining mass is
+renormalized. Authority-replay or final-position divergence still aborts
+generation instead of being mistaken for evidence. This is a public-only,
+worst-case opponent model; it does not read either true opponent secrets or a
+learned posterior.
+
 Player-private results are privileged engine records. They retain initial and
 final secret snapshots for both colors so a game ending before one side moves
 still has complete labels. Those snapshots never enter an agent callback.
@@ -181,6 +194,8 @@ the executable session. The orthodox trace version remains unchanged.
   these records are accepted into neural-model training.
 - Bind evaluator and hypothesis-manifest digests into trace provenance.
 - Extend the capturable authority audit beyond the current ten-rule catalog.
+- Replace the equal audited prior with a calibrated public Guesser posterior
+  after its held-out reliability is adequate.
 - Add evaluator-backed drawbacks without weakening the private capability
   boundary.
 - Migrate the browser controller to capturable-king observations.

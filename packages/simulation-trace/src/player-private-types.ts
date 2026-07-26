@@ -85,10 +85,15 @@ export interface PlayerPrivateSimulationTraceRecord {
   readonly finalPosition: CapturableKingPositionSnapshot;
   readonly result: SessionResult;
   readonly stoppedAtPlyLimit: boolean;
-  readonly hypothesisPolicy: {
-    readonly kind: "unrestricted-baseline";
-    readonly version: 1;
-  };
+  readonly hypothesisPolicy:
+    | {
+        readonly kind: "unrestricted-baseline";
+        readonly version: 1;
+      }
+    | {
+        readonly kind: "audited-uniform";
+        readonly version: 1;
+      };
   readonly secrets: {
     readonly initial: {
       readonly white: TraceRuleSecret;

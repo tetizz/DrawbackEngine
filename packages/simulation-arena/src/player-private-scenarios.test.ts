@@ -12,6 +12,7 @@ import {
   resolvePlayerPrivateRule,
 } from "./player-private-catalog.js";
 import {
+  AUDITED_OPPONENT_PROFILE,
   KING_CAPTURE_DIAGNOSTIC_PROFILE,
   KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
   resolvePlayerPrivateTrainingProfile,
@@ -48,6 +49,13 @@ describe("player-private diagnostic scenarios", () => {
     expect(resolvePlayerPrivateTrainingProfile(
       KING_CAPTURE_DIAGNOSTIC_PROFILE.id,
     )).toBe(KING_CAPTURE_DIAGNOSTIC_PROFILE);
+    expect(AUDITED_OPPONENT_PROFILE).toMatchObject({
+      id: "audited-opponent-v1",
+      opponentHypotheses: {
+        kind: "audited-uniform",
+        version: 1,
+      },
+    });
     expect(() => {
       resolvePlayerPrivateTrainingProfile("unknown");
     }).toThrow("Unknown");

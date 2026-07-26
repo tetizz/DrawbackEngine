@@ -60,6 +60,12 @@ export interface PublicDrawbackHypothesis {
   readonly capability: PublicHypothesisRuleCapability;
 }
 
+export type PublicRuleStateReconstructionFailure =
+  | "authority-replay-diverged"
+  | "hypothesis-already-lost"
+  | "observed-move-illegal"
+  | "final-position-diverged";
+
 const ownCapabilities = new WeakSet();
 const publicCapabilities = new WeakSet();
 const currentPositions = new WeakMap<object, PositionView>();
@@ -68,12 +74,14 @@ export class PublicRuleStateReconstructionError extends Error {
   public readonly authorityId: PositionAuthorityId;
   public readonly color: PlayerColor;
   public readonly drawbackId: string;
+  public readonly code: PublicRuleStateReconstructionFailure;
   public readonly reason: string;
 
   public constructor(
     authorityId: PositionAuthorityId,
     color: PlayerColor,
     drawbackId: string,
+    code: PublicRuleStateReconstructionFailure,
     reason: string,
   ) {
     super(
@@ -83,6 +91,7 @@ export class PublicRuleStateReconstructionError extends Error {
     this.authorityId = authorityId;
     this.color = color;
     this.drawbackId = drawbackId;
+    this.code = code;
     this.reason = reason;
   }
 }
@@ -359,6 +368,7 @@ function replayPublicRule<State, Parameters>(
         authorityId,
         color,
         rule.id,
+        "authority-replay-diverged",
         `Authority replay changed public move ${String(index)}.`,
       );
     }
@@ -382,6 +392,7 @@ function replayPublicRule<State, Parameters>(
           authorityId,
           color,
           rule.id,
+          "hypothesis-already-lost",
           `Public move ${String(index)} occurred after the hypothesis had already lost.`,
         );
       }
@@ -403,6 +414,7 @@ function replayPublicRule<State, Parameters>(
           authorityId,
           color,
           rule.id,
+          "observed-move-illegal",
           `Public move ${String(index)} contradicts the hypothesis legal mask.`,
         );
       }
@@ -429,6 +441,7 @@ function replayPublicRule<State, Parameters>(
       authorityId,
       color,
       rule.id,
+      "final-position-diverged",
       "Public rule replay did not reach the authenticated trace position.",
     );
   }

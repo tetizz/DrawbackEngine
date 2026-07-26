@@ -76,8 +76,10 @@ async function main(): Promise<void> {
       leafCacheHistoryMode: "full",
       evaluator: { kind: "material", version: 1 },
       opponentHypotheses: {
-        kind: "unrestricted-baseline",
-        version: 1,
+        ...(profile.opponentHypotheses ?? {
+          kind: "unrestricted-baseline",
+          version: 1,
+        }),
       },
     },
   });

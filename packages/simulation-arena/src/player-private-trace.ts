@@ -30,11 +30,7 @@ export function createPlayerPrivateSimulationTrace(
   game: PlayerPrivateSimulationResult,
   gameIndex: number,
 ): PlayerPrivateSimulationTraceRecord {
-  if (game.hypothesisPolicyId !== "unrestricted-baseline/v1") {
-    throw new TypeError(
-      "Player-private trace v1 requires unrestricted-baseline/v1 hypotheses.",
-    );
-  }
+  const hypothesisPolicy = traceHypothesisPolicy(game.hypothesisPolicyId);
   const position = CapturableKingPosition.fromFen(game.initialFen);
   const initialPosition = position.snapshot();
   const plies = game.plies.map((ply) => {
@@ -120,10 +116,7 @@ export function createPlayerPrivateSimulationTrace(
     finalPosition,
     result: game.result,
     stoppedAtPlyLimit: game.stoppedAtPlyLimit,
-    hypothesisPolicy: {
-      kind: "unrestricted-baseline",
-      version: 1,
-    },
+    hypothesisPolicy,
     secrets: {
       initial: {
         white: toSecret(
@@ -153,6 +146,20 @@ export function createPlayerPrivateSimulationTrace(
     plies,
   };
   return parsePlayerPrivateSimulationTraceRecord(record);
+}
+
+function traceHypothesisPolicy(
+  id: string,
+): PlayerPrivateSimulationTraceRecord["hypothesisPolicy"] {
+  if (id === "unrestricted-baseline/v1") {
+    return { kind: "unrestricted-baseline", version: 1 };
+  }
+  if (id === "audited-uniform/v1") {
+    return { kind: "audited-uniform", version: 1 };
+  }
+  throw new TypeError(
+    "Player-private trace has an unsupported opponent hypothesis policy.",
+  );
 }
 
 function toSecret(

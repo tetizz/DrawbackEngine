@@ -144,6 +144,20 @@ thresholds, and next-check obligations. Starting positions are selected only
 from the gameplay seed domain; hidden labels and parameter seeds cannot affect
 them. Use separate seed roots for selection or test corpora.
 
+Use `audited-opponent-v1` to make both private search agents reason against all
+publicly surviving audited drawbacks instead of the unrestricted control:
+
+```bash
+pnpm --filter @drawbackengine/cli player-private:batch -- \
+  train 100 20 20 8 448663553 1785536514 2586451971 \
+  ../DrawbackTrainingData/audited-opponent-train.ndjson \
+  120 32 2 50000 35 audited-opponent-v1
+```
+
+This model starts with equal mass per audited drawback label, reconstructs
+state from public moves, eliminates impossible hypotheses exactly, and never
+reads the opponent's true rule, parameters, or state.
+
 Ask the exact drawback-aware search for a move:
 
 ```bash

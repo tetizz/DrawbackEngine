@@ -26,11 +26,13 @@ ending rules. It rejects capturable-king games.
 
 The capturable version 1 explicitly identifies `capturable-king/v1`, audited
 player-private ruleset version 1, domain-separated Mulberry32 random policy
-version 1, and the conservative unrestricted-opponent hypothesis policy
-version 1. It accepts only the ten rules with current capturable-authority
-integration audits. The trace records distinct White and Black parameter RNG
-seeds separately from the gameplay/agent seed. This allowlist is centralized in `drawback-engine`; it
-does not upgrade those rules from `implemented-unverified`.
+version 1, and one explicit opponent-hypothesis policy: either the conservative
+`unrestricted-baseline` version 1 control or the public-replay
+`audited-uniform` version 1 model. It accepts only the ten rules with current
+capturable-authority integration audits. The trace records distinct White and
+Black parameter RNG seeds separately from the gameplay/agent seed. This
+allowlist is centralized in `drawback-engine`; it does not upgrade those rules
+from `implemented-unverified`.
 
 Both wire formats use UCI strings for legal masks and `{ uci, san }` for the
 observed move. Result objects retain the tagged `SessionResult`
@@ -130,6 +132,13 @@ training positions, not a replacement for ordinary-start validation. They
 deliberately create public king-capture opportunities, promotion paths, and
 check-obligation sequences that are too rare in shallow ordinary-start
 self-play. The profile ID is preserved in the agent search-policy provenance.
+
+The named `audited-opponent-v1` profile uses ordinary starts and the complete
+ten-label schedule while replacing the unrestricted control with an equal
+audited prior. Public replay eliminates exactly contradicted label/parameter
+particles and renormalizes survivors before search. The policy is recorded in
+`hypothesisPolicy`; trace schema version 1 remains unchanged because this field
+was already a required, versioned provenance discriminator.
 
 `streamPlayerPrivateAssignmentsParallel` retains at most one configured
 assignment window, emits strictly increasing global indexes, and is

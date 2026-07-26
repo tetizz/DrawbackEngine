@@ -16,6 +16,7 @@ import {
 import {
   createOwnPlayerRuleCapability,
   createPublicDrawbackHypothesis,
+  PublicRuleStateReconstructionError,
   type OwnPlayerRuleCapability,
   type PublicDrawbackHypothesis,
 } from "@drawbackengine/drawback-search";
@@ -27,6 +28,11 @@ import type { PlayerColor } from "@drawbackengine/shared";
 import type {
   HiddenDrawbackReveal,
 } from "./simulation.js";
+import {
+  PLAYER_PRIVATE_RULE_IDS,
+  resolvePlayerPrivateRule,
+  type PlayerPrivateRuleId,
+} from "./player-private-catalog.js";
 import {
   type PlayerPrivateAgentSearchPolicy,
   type PlayerPrivateSimulationAgent,
@@ -261,6 +267,104 @@ export const unrestrictedOpponentHypotheses: PublicOpponentHypothesisProvider =
       ]);
     },
   });
+
+const AUDITED_RULE_MASS = 1 / PLAYER_PRIVATE_RULE_IDS.length;
+
+/**
+ * Equal prior mass per audited drawback label, reconstructed exclusively from
+ * the authenticated public replay. Triple Play's two observed parameter
+ * particles split that label's mass rather than receiving double weight.
+ */
+export const auditedUniformOpponentHypotheses:
+  PublicOpponentHypothesisProvider = Object.freeze({
+    id: "audited-uniform/v1",
+    hypotheses(request: PublicOpponentHypothesisRequest) {
+      const surviving: PublicDrawbackHypothesis[] = [];
+      for (const ruleId of PLAYER_PRIVATE_RULE_IDS) {
+        const parameterParticles = publicParameterParticles(ruleId);
+        for (const parameters of parameterParticles) {
+          try {
+            surviving.push(
+              createPublicDrawbackHypothesis(
+                publicHypothesisId(
+                  request.opponentColor,
+                  ruleId,
+                  parameters,
+                ),
+                AUDITED_RULE_MASS / parameterParticles.length,
+                request.opponentColor,
+                resolvePlayerPrivateRule(ruleId),
+                parameters,
+                request.trace,
+              ),
+            );
+          } catch (error: unknown) {
+            if (
+              error instanceof PublicRuleStateReconstructionError
+              && (
+                error.code === "hypothesis-already-lost"
+                || error.code === "observed-move-illegal"
+              )
+            ) {
+              continue;
+            }
+            throw error;
+          }
+        }
+      }
+      return normalizePublicHypotheses(surviving);
+    },
+  });
+
+function normalizePublicHypotheses(
+  hypotheses: readonly PublicDrawbackHypothesis[],
+): readonly PublicDrawbackHypothesis[] {
+  const total = hypotheses.reduce(
+    (sum, hypothesis) => sum + hypothesis.probability,
+    0,
+  );
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new Error(
+      "Authenticated public play eliminated every audited opponent hypothesis.",
+    );
+  }
+  return Object.freeze(
+    hypotheses.map((hypothesis) =>
+      Object.freeze({
+        ...hypothesis,
+        probability: hypothesis.probability / total,
+      })
+    ),
+  );
+}
+
+function publicParameterParticles(
+  ruleId: PlayerPrivateRuleId,
+): readonly Record<string, unknown>[] {
+  return ruleId === "triple-play"
+    ? Object.freeze([
+        Object.freeze({ requiredType: "bishop" }),
+        Object.freeze({ requiredType: "knight" }),
+      ])
+    : Object.freeze([Object.freeze({})]);
+}
+
+function publicHypothesisId(
+  color: PlayerColor,
+  ruleId: PlayerPrivateRuleId,
+  parameters: Readonly<Record<string, unknown>>,
+): string {
+  const requiredType = parameters["requiredType"];
+  if (requiredType === undefined) {
+    return `public-${color}-${ruleId}`;
+  }
+  if (requiredType !== "bishop" && requiredType !== "knight") {
+    throw new TypeError(
+      "Public Triple Play parameter particle is unsupported.",
+    );
+  }
+  return `public-${color}-${ruleId}-${requiredType}`;
+}
 
 function agentSnapshot(
   agent: PlayerPrivateSimulationAgent,

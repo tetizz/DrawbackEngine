@@ -75,6 +75,32 @@ describe("parallel player-private simulation", () => {
     30_000,
   );
 
+  it(
+    "runs the audited opponent policy through workers with exact provenance",
+    async () => {
+      const auditedPolicy: PlayerPrivateSearchPolicy = {
+        ...policy,
+        policyId: "audited-opponent-worker-test",
+        opponentHypotheses: {
+          kind: "audited-uniform",
+          version: 1,
+        },
+      };
+      const [result] = await simulatePlayerPrivateAssignmentsParallel({
+        assignments: [assignments[1]],
+        workers: 1,
+        policy: auditedPolicy,
+        maxPlies: 1,
+      });
+
+      expect(result?.hypothesisPolicyId).toBe("audited-uniform/v1");
+      expect(result?.agents.white.searchPolicy?.policyId).toBe(
+        "audited-opponent-worker-test",
+      );
+    },
+    30_000,
+  );
+
   it("rejects protocol extras and unsupported rules", () => {
     const valid = {
       schemaVersion: 1,
@@ -98,6 +124,30 @@ describe("parallel player-private simulation", () => {
         policy: { ...policy, maxNodes: 1 },
       });
     }).toThrow("greater than one");
+    expect(() => {
+      assertPlayerPrivateWorkerRequest({
+        ...valid,
+        policy: {
+          ...policy,
+          opponentHypotheses: {
+            kind: "audited-uniform",
+            version: 1,
+          },
+        },
+      });
+    }).not.toThrow();
+    expect(() => {
+      assertPlayerPrivateWorkerRequest({
+        ...valid,
+        policy: {
+          ...policy,
+          opponentHypotheses: {
+            kind: "unknown",
+            version: 1,
+          },
+        },
+      });
+    }).toThrow("audited-uniform");
     expect(() => {
       assertPlayerPrivateWorkerRequest({
         ...valid,

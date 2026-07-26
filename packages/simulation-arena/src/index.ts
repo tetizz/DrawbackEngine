@@ -33,6 +33,7 @@ export type {
 } from "./player-private-agent.js";
 export { simulatePlayerPrivateGame } from "./player-private-simulation.js";
 export {
+  auditedUniformOpponentHypotheses,
   unrestrictedOpponentHypotheses,
 } from "./player-private-simulation.js";
 export type {
@@ -70,6 +71,7 @@ export {
   assertPlayerPrivateWorkerResponse,
 } from "./player-private-result-validation.js";
 export type {
+  PlayerPrivateOpponentHypothesisPolicy,
   PlayerPrivateAssignmentBatchRequest,
   PlayerPrivateGameAssignment,
   PlayerPrivateSearchPolicy,
@@ -84,6 +86,7 @@ export type {
   PlayerPrivateRuleId,
 } from "./player-private-catalog.js";
 export {
+  AUDITED_OPPONENT_PROFILE,
   KING_CAPTURE_DIAGNOSTIC_PROFILE,
   KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
   PLAYER_PRIVATE_TRAINING_PROFILES,

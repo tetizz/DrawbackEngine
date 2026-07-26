@@ -1,5 +1,8 @@
 import { CapturableKingPosition } from "@drawbackengine/chess-core";
 import type { PlayerPrivateRuleId } from "./player-private-catalog.js";
+import type {
+  PlayerPrivateOpponentHypothesisPolicy,
+} from "./player-private-parallel-protocol.js";
 
 export interface PlayerPrivateTrainingScenario {
   readonly id: string;
@@ -12,6 +15,7 @@ export interface PlayerPrivateTrainingProfile {
   readonly policyId: string;
   readonly ruleIds?: readonly PlayerPrivateRuleId[];
   readonly scenarios?: readonly PlayerPrivateTrainingScenario[];
+  readonly opponentHypotheses?: PlayerPrivateOpponentHypothesisPolicy;
 }
 
 const KING_CAPTURE_RULE_IDS = Object.freeze([
@@ -97,9 +101,20 @@ export const KING_CAPTURE_DIAGNOSTIC_PROFILE: PlayerPrivateTrainingProfile =
     scenarios: KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
   });
 
+export const AUDITED_OPPONENT_PROFILE: PlayerPrivateTrainingProfile =
+  Object.freeze({
+    id: "audited-opponent-v1",
+    policyId: "material-player-private-audited-opponent/v1",
+    opponentHypotheses: Object.freeze({
+      kind: "audited-uniform",
+      version: 1,
+    }),
+  });
+
 export const PLAYER_PRIVATE_TRAINING_PROFILES = Object.freeze([
   STANDARD_PLAYER_PRIVATE_PROFILE,
   KING_CAPTURE_DIAGNOSTIC_PROFILE,
+  AUDITED_OPPONENT_PROFILE,
 ]);
 
 export function resolvePlayerPrivateTrainingProfile(

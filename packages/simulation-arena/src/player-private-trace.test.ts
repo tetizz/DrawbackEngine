@@ -6,6 +6,7 @@ import {
 import { DrawbackGameSession } from "@drawbackengine/chess-core";
 import type { ChessMove } from "@drawbackengine/drawback-engine";
 import {
+  auditedUniformOpponentHypotheses,
   createPlayerPrivateSimulationTrace,
   createSimulationRandomStreams,
   PLAYER_PRIVATE_RULE_IDS,
@@ -160,6 +161,40 @@ describe("player-private simulation trace v1", () => {
     expect(() =>
       standardParser.parsePrivateSimulationTraceRecord(trace)
     ).toThrow();
+  });
+
+  it("round-trips audited-opponent provenance and rejects unknown policies", async () => {
+    const vegan = resolvePlayerPrivateRule("vegan");
+    const game = await simulatePlayerPrivateGame({
+      seed: 0xa0d1_7ed,
+      maxPlies: 2,
+      rules: { white: vegan, black: vegan },
+      whiteAgent: statefulScriptedAgent,
+      blackAgent: statefulScriptedAgent,
+      opponentHypotheses: auditedUniformOpponentHypotheses,
+    });
+    const trace = createPlayerPrivateSimulationTrace(game, 2);
+
+    expect(trace.hypothesisPolicy).toEqual({
+      kind: "audited-uniform",
+      version: 1,
+    });
+    expect(
+      parsePlayerPrivateSimulationTraceRecord(
+        JSON.parse(
+          encodePlayerPrivateSimulationTraceRecord(trace),
+        ) as unknown,
+      ),
+    ).toEqual(trace);
+    expect(() =>
+      parsePlayerPrivateSimulationTraceRecord({
+        ...trace,
+        hypothesisPolicy: {
+          kind: "unknown",
+          version: 1,
+        },
+      })
+    ).toThrow("hypothesisPolicy is unsupported");
   });
 
   it(

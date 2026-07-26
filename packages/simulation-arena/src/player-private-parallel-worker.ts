@@ -13,6 +13,7 @@ import {
   resolvePlayerPrivateRule,
 } from "./player-private-catalog.js";
 import {
+  auditedUniformOpponentHypotheses,
   simulatePlayerPrivateGame,
   unrestrictedOpponentHypotheses,
 } from "./player-private-simulation.js";
@@ -35,7 +36,10 @@ async function run(
         },
         whiteAgent: agent,
         blackAgent: agent,
-        opponentHypotheses: unrestrictedOpponentHypotheses,
+        opponentHypotheses:
+          request.policy.opponentHypotheses.kind === "audited-uniform"
+            ? auditedUniformOpponentHypotheses
+            : unrestrictedOpponentHypotheses,
         ...(assignment.initialFen === undefined
           ? {}
           : { fen: assignment.initialFen }),

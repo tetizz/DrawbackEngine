@@ -21,11 +21,18 @@ export interface PlayerPrivateSearchPolicy {
     readonly kind: "material";
     readonly version: 1;
   };
-  readonly opponentHypotheses: {
-    readonly kind: "unrestricted-baseline";
-    readonly version: 1;
-  };
+  readonly opponentHypotheses: PlayerPrivateOpponentHypothesisPolicy;
 }
+
+export type PlayerPrivateOpponentHypothesisPolicy =
+  | {
+      readonly kind: "unrestricted-baseline";
+      readonly version: 1;
+    }
+  | {
+      readonly kind: "audited-uniform";
+      readonly version: 1;
+    };
 
 export interface PlayerPrivateGameAssignment {
   readonly seed: number;
@@ -269,11 +276,14 @@ export function assertPlayerPrivateSearchPolicy(value: unknown): void {
     "opponent hypothesis policy",
   );
   if (
-    opponent["kind"] !== "unrestricted-baseline"
+    (
+      opponent["kind"] !== "unrestricted-baseline"
+      && opponent["kind"] !== "audited-uniform"
+    )
     || opponent["version"] !== 1
   ) {
     throw new TypeError(
-      "Only the explicit unrestricted opponent baseline v1 is supported.",
+      "Only unrestricted-baseline or audited-uniform opponent hypotheses v1 are supported.",
     );
   }
 }
