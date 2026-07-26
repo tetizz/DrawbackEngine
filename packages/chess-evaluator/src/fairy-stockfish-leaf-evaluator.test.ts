@@ -172,7 +172,7 @@ describe("initializeFairyStockfishLeafEvaluator", () => {
     }
   });
 
-  it("authenticates a regular file reached through a parent directory link", async () => {
+  it("rejects a variant file reached through a parent directory link", async () => {
     const directory = await mkdtemp(join(tmpdir(), "drawbackengine-link-"));
     const targetDirectory = join(directory, "target");
     const linkedDirectory = join(directory, "linked");
@@ -186,18 +186,14 @@ describe("initializeFairyStockfishLeafEvaluator", () => {
       linkedDirectory,
       process.platform === "win32" ? "junction" : "dir",
     );
-    const transport = new MockUciTransport([
-      ...handshake(),
-      { command: "quit" },
-    ]);
+    const transport = new MockUciTransport([]);
     const client = new UciClient(transport);
     try {
-      const evaluator = await initializeFairyStockfishLeafEvaluator({
+      await expect(initializeFairyStockfishLeafEvaluator({
         client,
         depth: 3,
         variantPath: join(linkedDirectory, "drawbackchess.ini"),
-      });
-      await evaluator.close();
+      })).rejects.toThrow("cannot traverse a symbolic link");
       expect(transport.complete).toBe(true);
     } finally {
       await rm(directory, { recursive: true, force: true });

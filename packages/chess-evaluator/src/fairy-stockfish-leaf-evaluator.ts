@@ -17,7 +17,10 @@ import { tmpdir } from "node:os";
 import {
   join,
   normalize,
+  parse,
+  relative,
   resolve,
+  sep,
 } from "node:path";
 import type { UciClient } from "./client.js";
 import type {
@@ -67,6 +70,7 @@ async function authenticateFairyStockfishVariantConfig(
 ): Promise<AuthenticatedFairyVariantConfig> {
   validateVariantPath(variantPath);
   const resolvedPath = resolve(variantPath);
+  await assertNoSymbolicLinkParents(resolvedPath);
   const metadata = await lstat(resolvedPath);
   if (!metadata.isFile() || metadata.isSymbolicLink()) {
     throw new FairyStockfishLeafEvaluatorError(
@@ -249,6 +253,22 @@ async function materializePrivateVariantConfig(
       variantPath: join(createdDirectoryPath, "drawbackchess.ini"),
     });
     throw error;
+  }
+}
+
+async function assertNoSymbolicLinkParents(
+  resolvedPath: string,
+): Promise<void> {
+  const root = parse(resolvedPath).root;
+  const segments = relative(root, resolvedPath).split(sep);
+  let currentPath = root;
+  for (const segment of segments.slice(0, -1)) {
+    currentPath = join(currentPath, segment);
+    if ((await lstat(currentPath)).isSymbolicLink()) {
+      throw new FairyStockfishLeafEvaluatorError(
+        "Fairy-Stockfish VariantPath cannot traverse a symbolic link.",
+      );
+    }
   }
 }
 
