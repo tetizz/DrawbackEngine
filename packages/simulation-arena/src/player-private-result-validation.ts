@@ -2,6 +2,9 @@ import {
   DEFAULT_PLAYER_PRIVATE_LEAF_CACHE_ENTRIES,
 } from "@drawbackengine/drawback-search";
 import {
+  CapturableKingPosition,
+} from "@drawbackengine/chess-core";
+import {
   assertExactKeys,
   protocolRecord,
   type PlayerPrivateGameAssignment,
@@ -271,6 +274,13 @@ function validatePositionChain(
   ) {
     throw new TypeError(
       "Player-private result position chain is invalid.",
+    );
+  }
+  const expectedInitialFen =
+    assignment.initialFen ?? CapturableKingPosition.fromFen().fen;
+  if (result["initialFen"] !== expectedInitialFen) {
+    throw new TypeError(
+      "Player-private result initial FEN does not match its assignment.",
     );
   }
   const plies = result["plies"];

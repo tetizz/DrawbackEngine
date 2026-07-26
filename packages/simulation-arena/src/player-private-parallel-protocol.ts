@@ -2,6 +2,9 @@ import type {
   PlayerPrivateSimulationResult,
 } from "./player-private-simulation.js";
 import {
+  CapturableKingPosition,
+} from "@drawbackengine/chess-core";
+import {
   PLAYER_PRIVATE_RULE_IDS,
   type PlayerPrivateRuleId,
 } from "./player-private-catalog.js";
@@ -32,6 +35,7 @@ export interface PlayerPrivateGameAssignment {
   };
   readonly whiteRuleId: PlayerPrivateRuleId;
   readonly blackRuleId: PlayerPrivateRuleId;
+  readonly initialFen?: string;
 }
 
 export interface PlayerPrivateAssignmentBatchRequest {
@@ -118,9 +122,18 @@ export function assertPlayerPrivateWorkerRequest(
 
 export function assertPlayerPrivateGameAssignment(value: unknown): void {
   const assignment = protocolRecord(value, "player-private assignment");
+  const expected = [
+    "seed",
+    "parameterSeeds",
+    "whiteRuleId",
+    "blackRuleId",
+  ];
+  if (assignment["initialFen"] !== undefined) {
+    expected.push("initialFen");
+  }
   assertExactKeys(
     assignment,
-    ["seed", "parameterSeeds", "whiteRuleId", "blackRuleId"],
+    expected,
     "player-private assignment",
   );
   const seed = assignment["seed"];
@@ -160,6 +173,28 @@ export function assertPlayerPrivateGameAssignment(value: unknown): void {
     ) {
       throw new RangeError(`${key} is outside the player-private catalog.`);
     }
+  }
+  if (
+    assignment["initialFen"] !== undefined
+    && (
+      typeof assignment["initialFen"] !== "string"
+      || assignment["initialFen"].trim() !== assignment["initialFen"]
+      || assignment["initialFen"].length === 0
+      || /[\r\n]/u.test(assignment["initialFen"])
+    )
+  ) {
+    throw new RangeError(
+      "Player-private assignment initialFen must be a non-empty single-line string.",
+    );
+  }
+  if (
+    typeof assignment["initialFen"] === "string"
+    && CapturableKingPosition.fromFen(assignment["initialFen"]).fen
+      !== assignment["initialFen"]
+  ) {
+    throw new RangeError(
+      "Player-private assignment initialFen must be canonical.",
+    );
   }
 }
 

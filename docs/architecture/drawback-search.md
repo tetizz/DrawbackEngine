@@ -161,6 +161,13 @@ Worker responses are accepted only when assignment labels, complete policy
 metadata, hypothesis-policy ID, ply/FEN continuity, terminal payload, and ply
 limit all match the immutable request.
 
+The `king-capture-diagnostics-v1` corpus profile adds label-independent public
+starting positions to the same worker boundary. Its eight symmetric positions
+exercise queen-versus-non-queen captures, bishop/knight material thresholds,
+promotion unlocks, and next-turn check obligations. Scenario choice comes from
+gameplay randomness rather than label or hidden-parameter randomness, and the
+worker response must reproduce the assigned canonical FEN exactly.
+
 `createPlayerPrivateSimulationTrace` now projects those results into the
 separate `drawbackengine-player-private-simulation-trace` version 1 contract.
 It records complete capturable authority snapshots, including king-passant

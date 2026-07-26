@@ -116,6 +116,21 @@ selected rules every `R` games balance each color's marginal labels and every
 gameplay seeds, and White/Black parameter seeds have separate roots. Changing
 one root leaves the other two domains unchanged.
 
+An assignment may also contain a canonical public `initialFen`. The scheduler
+snapshots a caller-owned scenario list and selects from it using a dedicated
+domain derived only from the gameplay seed and global game index. Changing the
+label seed changes the hidden rule schedule without changing any starting
+position; changing hidden-parameter seeds also leaves the positions unchanged.
+Worker responses must return the exact assigned initial FEN before their
+semantic replay is accepted.
+
+The named `king-capture-diagnostics-v1` CLI profile uses eight symmetric
+positions and the five audited king-capture rules. These are hard-negative
+training positions, not a replacement for ordinary-start validation. They
+deliberately create public king-capture opportunities, promotion paths, and
+check-obligation sequences that are too rare in shallow ordinary-start
+self-play. The profile ID is preserved in the agent search-policy provenance.
+
 `streamPlayerPrivateAssignmentsParallel` retains at most one configured
 assignment window, emits strictly increasing global indexes, and is
 byte-identical across worker and window sizes. It does not materialize the

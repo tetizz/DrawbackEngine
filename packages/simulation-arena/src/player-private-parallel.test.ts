@@ -10,6 +10,14 @@ import {
 import {
   assertPlayerPrivateWorkerResponse,
 } from "./player-private-result-validation.js";
+import {
+  KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
+} from "./player-private-scenarios.js";
+
+const diagnosticStart = KING_CAPTURE_DIAGNOSTIC_SCENARIOS[0];
+if (diagnosticStart === undefined) {
+  throw new Error("Expected at least one king-capture diagnostic scenario.");
+}
 
 const policy: PlayerPrivateSearchPolicy = {
   policyId: "material-search-v1",
@@ -34,6 +42,7 @@ const assignments = [
     parameterSeeds: { white: 1_101, black: 1_102 },
     whiteRuleId: "vegan",
     blackRuleId: "checkers",
+    initialFen: diagnosticStart.fen,
   },
   {
     seed: 202,
@@ -101,6 +110,18 @@ describe("parallel player-private simulation", () => {
         }],
       });
     }).toThrow("outside the player-private catalog");
+    expect(() => {
+      assertPlayerPrivateWorkerRequest({
+        ...valid,
+        assignedGames: [{
+          gameIndex: 0,
+          assignment: {
+            ...assignments[0],
+            initialFen: "not a FEN",
+          },
+        }],
+      });
+    }).toThrow();
   });
 
   it("snapshots caller-owned assignments and policy before worker retries", async () => {
@@ -219,6 +240,25 @@ describe("parallel player-private simulation", () => {
         1,
       );
     }).toThrow("parameter seeds");
+
+    const corruptedInitialFen = {
+      ...response,
+      games: [{
+        gameIndex: 0,
+        result: {
+          ...result,
+          initialFen: "4k3/8/8/8/8/8/8/4K3 w - - 0 1",
+        },
+      }],
+    } as const;
+    expect(() => {
+      assertPlayerPrivateWorkerResponse(
+        corruptedInitialFen,
+        assignedGames,
+        policy,
+        1,
+      );
+    }).toThrow("initial FEN");
 
     const forgedShortActive = {
       ...response,

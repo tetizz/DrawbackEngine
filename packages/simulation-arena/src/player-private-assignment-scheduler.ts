@@ -2,6 +2,9 @@ import {
   deriveSimulationStreamSeed,
   Mulberry32,
 } from "@drawbackengine/shared";
+import {
+  CapturableKingPosition,
+} from "@drawbackengine/chess-core";
 import { deriveGameSeed } from "./batch.js";
 import {
   PLAYER_PRIVATE_RULE_IDS,
@@ -32,6 +35,7 @@ export interface PlayerPrivateAssignmentScheduleOptions {
   readonly gameplaySeed: number;
   readonly parameterSeed: number;
   readonly ruleIds?: readonly PlayerPrivateRuleId[];
+  readonly initialFens?: readonly string[];
 }
 
 export interface ScheduledPlayerPrivateAssignment {
@@ -47,6 +51,7 @@ const SCHEDULE_DOMAINS = Object.freeze({
   blackLabels: 0x76e3_4cd5,
   whiteParameters: 0x1c69_ae77,
   blackParameters: 0xd432_508b,
+  initialFen: 0x8f4b_9d31,
 });
 
 /**
@@ -69,6 +74,7 @@ export function createPlayerPrivateAssignmentSchedule(
   const ruleIds = checkedRuleIds(
     options.ruleIds ?? PLAYER_PRIVATE_RULE_IDS,
   );
+  const initialFens = checkedInitialFens(options.initialFens);
   const whiteRules = shuffledRules(
     ruleIds,
     deriveSimulationStreamSeed(
@@ -120,6 +126,17 @@ export function createPlayerPrivateAssignmentSchedule(
               }),
               whiteRuleId,
               blackRuleId,
+              ...(initialFens === undefined
+                ? {}
+                : {
+                    initialFen: initialFens[
+                      deriveSimulationStreamSeed(
+                        gameplaySeed,
+                        SCHEDULE_DOMAINS.initialFen,
+                        globalIndex,
+                      ) % initialFens.length
+                    ],
+                  }),
             }),
           });
           globalIndex += 1;
@@ -127,6 +144,36 @@ export function createPlayerPrivateAssignmentSchedule(
       }
     },
   });
+}
+
+function checkedInitialFens(
+  input: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (input === undefined) {
+    return undefined;
+  }
+  const copy = [...input];
+  if (
+    copy.length === 0
+    || new Set(copy).size !== copy.length
+    || copy.some(
+      (fen) =>
+        typeof fen !== "string"
+        || fen.trim() !== fen
+        || fen.length === 0
+        || /[\r\n]/u.test(fen),
+    )
+  ) {
+    throw new RangeError(
+      "initialFens must be a non-empty unique list of single-line FENs.",
+    );
+  }
+  for (const fen of copy) {
+    if (CapturableKingPosition.fromFen(fen).fen !== fen) {
+      throw new RangeError("initialFens must contain canonical FENs.");
+    }
+  }
+  return Object.freeze(copy);
 }
 
 function checkedSplitCounts(

@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import {
   createPlayerPrivateAssignmentSchedule,
   PLAYER_PRIVATE_DATA_SPLITS,
+  resolvePlayerPrivateTrainingProfile,
   streamPlayerPrivateAssignmentsParallel,
   type PlayerPrivateDataSplit,
   type ScheduledPlayerPrivateAssignment,
@@ -40,12 +41,23 @@ async function main(): Promise<void> {
   const maxDepth = positiveInteger(args[11], 2);
   const maxNodes = positiveInteger(args[12], 50_000);
   const temperatureCp = positiveNumber(args[13], 35);
+  const profile = resolvePlayerPrivateTrainingProfile(
+    args[14] ?? "standard",
+  );
   const schedule = selectedSplit(
     createPlayerPrivateAssignmentSchedule({
       splitCounts,
       labelSeed,
       gameplaySeed,
       parameterSeed,
+      ...(profile.ruleIds === undefined
+        ? {}
+        : { ruleIds: profile.ruleIds }),
+      ...(profile.scenarios === undefined
+        ? {}
+        : {
+            initialFens: profile.scenarios.map(({ fen }) => fen),
+          }),
     }),
     split,
   );
@@ -55,7 +67,7 @@ async function main(): Promise<void> {
     windowSize,
     maxPlies,
     policy: {
-      policyId: "material-player-private-corpus/v1",
+      policyId: profile.policyId,
       maxDepth,
       maxNodes,
       temperatureCp,

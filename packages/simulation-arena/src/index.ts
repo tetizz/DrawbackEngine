@@ -83,6 +83,17 @@ export {
 export type {
   PlayerPrivateRuleId,
 } from "./player-private-catalog.js";
+export {
+  KING_CAPTURE_DIAGNOSTIC_PROFILE,
+  KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
+  PLAYER_PRIVATE_TRAINING_PROFILES,
+  resolvePlayerPrivateTrainingProfile,
+  STANDARD_PLAYER_PRIVATE_PROFILE,
+} from "./player-private-scenarios.js";
+export type {
+  PlayerPrivateTrainingProfile,
+  PlayerPrivateTrainingScenario,
+} from "./player-private-scenarios.js";
 export type { BatchConfig, CatalogBatchConfig } from "./batch.js";
 export {
   CATALOG_AGENT_IDS,

@@ -42,6 +42,8 @@ const expectedArenaFiles = new Set([
   "player-private-parallel.test.ts",
   "player-private-parallel.ts",
   "player-private-result-validation.ts",
+  "player-private-scenarios.test.ts",
+  "player-private-scenarios.ts",
   "player-private-simulation.test.ts",
   "player-private-simulation.ts",
   "player-private-stream.test.ts",

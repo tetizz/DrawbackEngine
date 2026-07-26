@@ -36,6 +36,9 @@ async function run(
         whiteAgent: agent,
         blackAgent: agent,
         opponentHypotheses: unrestrictedOpponentHypotheses,
+        ...(assignment.initialFen === undefined
+          ? {}
+          : { fen: assignment.initialFen }),
         ...(request.maxPlies === undefined
           ? {}
           : { maxPlies: request.maxPlies }),

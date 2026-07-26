@@ -120,12 +120,29 @@ pnpm --filter @drawbackengine/cli player-private:batch -- \
 
 The positional values are split, train/validation/test counts, workers,
 label/gameplay/parameter seed roots, and output path. Optional trailing values
-set max plies, bounded window size, search depth, node budget, and temperature.
+set max plies, bounded window size, search depth, node budget, temperature,
+and a named training profile. The default profile is `standard`.
 Use `validation` and `test` with otherwise identical arguments to publish the
 held-out files. The scheduler balances ordered drawback pairs independently
 inside each split, keeps their gameplay seeds disjoint, and streams without
-materializing the corpus in RAM. The Guesser adapter must still land before
-these privileged traces are accepted for model training.
+materializing the corpus in RAM. DrawbackGuesser must convert and validate
+these privileged traces before model training.
+
+The `king-capture-diagnostics-v1` profile restricts labels to the five audited
+king-capture drawbacks and starts from eight public, symmetric diagnostic
+positions:
+
+```bash
+pnpm --filter @drawbackengine/cli player-private:batch -- \
+  train 500 100 100 8 286331153 572662306 858993459 \
+  ../DrawbackTrainingData/king-diagnostics-train.ndjson \
+  4 32 1 5000 35 king-capture-diagnostics-v1
+```
+
+It creates queen/non-queen king-capture choices, promotion unlocks, three-piece
+thresholds, and next-check obligations. Starting positions are selected only
+from the gameplay seed domain; hidden labels and parameter seeds cannot affect
+them. Use separate seed roots for selection or test corpora.
 
 Ask the exact drawback-aware search for a move:
 

@@ -6,6 +6,9 @@ import {
 import {
   PLAYER_PRIVATE_RULE_IDS,
 } from "./player-private-catalog.js";
+import {
+  KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
+} from "./player-private-scenarios.js";
 
 const roots = {
   labelSeed: 11,
@@ -129,6 +132,45 @@ describe("player-private assignment scheduler", () => {
     );
   });
 
+  it("selects public starting positions only from gameplay randomness", () => {
+    const splitCounts = { train: 40, validation: 0, test: 0 };
+    const initialFens = KING_CAPTURE_DIAGNOSTIC_SCENARIOS.map(
+      ({ fen }) => fen,
+    );
+    const baseline = [...createPlayerPrivateAssignmentSchedule({
+      ...roots,
+      splitCounts,
+      initialFens,
+    })];
+    const differentLabels = [...createPlayerPrivateAssignmentSchedule({
+      ...roots,
+      labelSeed: 12,
+      splitCounts,
+      initialFens,
+    })];
+    const differentGameplay = [...createPlayerPrivateAssignmentSchedule({
+      ...roots,
+      gameplaySeed: 23,
+      splitCounts,
+      initialFens,
+    })];
+
+    expect(baseline.map(({ assignment }) => assignment.initialFen)).toEqual(
+      differentLabels.map(({ assignment }) => assignment.initialFen),
+    );
+    expect(baseline.map(rulePair)).not.toEqual(
+      differentLabels.map(rulePair),
+    );
+    expect(baseline.map(({ assignment }) => assignment.initialFen)).not.toEqual(
+      differentGameplay.map(({ assignment }) => assignment.initialFen),
+    );
+    expect(
+      baseline.every(({ assignment }) =>
+        assignment.initialFen !== undefined
+        && initialFens.includes(assignment.initialFen)),
+    ).toBe(true);
+  });
+
   it("snapshots caller-owned rule lists and rejects invalid domains", () => {
     const mutableRules = [...PLAYER_PRIVATE_RULE_IDS];
     const iterable = createPlayerPrivateAssignmentSchedule({
@@ -157,6 +199,19 @@ describe("player-private assignment scheduler", () => {
       splitCounts: { train: 1, validation: 0, test: 0 },
       ruleIds: ["vegan", "vegan"],
     })).toThrow("unique subset");
+    expect(() => createPlayerPrivateAssignmentSchedule({
+      ...roots,
+      splitCounts: { train: 1, validation: 0, test: 0 },
+      initialFens: ["not a FEN"],
+    })).toThrow();
+    expect(() => createPlayerPrivateAssignmentSchedule({
+      ...roots,
+      splitCounts: { train: 1, validation: 0, test: 0 },
+      initialFens: [
+        KING_CAPTURE_DIAGNOSTIC_SCENARIOS[0]?.fen ?? "",
+        KING_CAPTURE_DIAGNOSTIC_SCENARIOS[0]?.fen ?? "",
+      ],
+    })).toThrow("unique");
   });
 });
 
