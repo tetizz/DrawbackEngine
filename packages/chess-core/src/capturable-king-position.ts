@@ -231,6 +231,7 @@ export class CapturableKingPosition {
     let terminal: CapturableKingTerminal = null;
     if (generated.kingPassant !== undefined) {
       this.#position.board.take(generated.kingPassant.kingSquare);
+      this.#position.castles.discardColor(generated.kingPassant.victim);
       terminal = {
         kind: "king-capture",
         winner: movingColor,
@@ -239,6 +240,7 @@ export class CapturableKingPosition {
         method: "castling-en-passant",
       };
     } else if (generated.move.captured === "king") {
+      this.#position.castles.discardColor(oppositeColor(movingColor));
       terminal = {
         kind: "king-capture",
         winner: movingColor,

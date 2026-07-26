@@ -50,12 +50,25 @@ export async function writePlayerPrivateSplitTraceFileAtomic(
       firstGameIndex ??= game.globalIndex;
       lastGameIndex = game.globalIndex;
       expectedSplitIndex += 1;
-      yield encodePlayerPrivateSimulationTraceRecord(
-        createPlayerPrivateSimulationTrace(
-          game.result,
-          game.globalIndex,
-        ),
-      );
+      try {
+        yield encodePlayerPrivateSimulationTraceRecord(
+          createPlayerPrivateSimulationTrace(
+            game.result,
+            game.globalIndex,
+          ),
+        );
+      } catch (error: unknown) {
+        const detail =
+          error instanceof Error ? error.message : "Unknown trace error.";
+        throw new Error(
+          `Failed to encode ${split} game ${String(game.splitIndex)} `
+            + `(global index ${String(game.globalIndex)}, seed `
+            + `${String(game.assignment.seed)}, `
+            + `${game.assignment.whiteRuleId} versus `
+            + `${game.assignment.blackRuleId}): ${detail}`,
+          { cause: error },
+        );
+      }
     }
     if (expectedSplitIndex === 0) {
       throw new RangeError(`Cannot publish an empty ${split} split.`);

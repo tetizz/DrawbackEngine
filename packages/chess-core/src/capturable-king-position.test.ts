@@ -48,6 +48,26 @@ describe("CapturableKingPosition", () => {
     expect(position.move({ from: "e8", to: "e7" })).toBeNull();
   });
 
+  it("clears captured-king castling rights in a restorable terminal snapshot", () => {
+    const position = CapturableKingPosition.fromFen(
+      "r3k2r/4Q3/8/8/8/8/8/R3K2R w KQkq - 0 1",
+    );
+
+    const result = position.move({ from: "e7", to: "e8" });
+
+    expect(result?.terminal).toMatchObject({
+      kind: "king-capture",
+      winner: "white",
+      capturedKing: "black",
+      method: "direct",
+    });
+    expect(position.fen.split(" ")[2]).toBe("KQ");
+    const snapshot = position.snapshot();
+    expect(
+      CapturableKingPosition.fromSnapshot(snapshot).snapshot(),
+    ).toEqual(snapshot);
+  });
+
   it("generates every promotion choice when a pawn captures the king", () => {
     const position = CapturableKingPosition.fromFen(
       "k7/1P6/8/8/8/8/8/7K w - - 0 1",
