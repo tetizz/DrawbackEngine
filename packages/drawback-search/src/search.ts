@@ -185,12 +185,15 @@ async function searchNode(
   state: SearchState,
 ): Promise<NodeResult> {
   throwIfAborted(state.limits.signal);
+  const terminal = terminalScore(session.result, state.rootColor, ply);
   if (state.nodes >= state.limits.maxNodes) {
+    if (terminal !== null) {
+      return { score: terminal, principalVariation: [] };
+    }
     state.truncated = true;
     return evaluateLeaf(session, ply, state);
   }
   state.nodes += 1;
-  const terminal = terminalScore(session.result, state.rootColor, ply);
   if (terminal !== null) {
     return { score: terminal, principalVariation: [] };
   }

@@ -118,6 +118,47 @@ describe("searchOmniscientDrawbackMove", () => {
     expect(session.legalMoves()).toContainEqual(result.move);
   });
 
+  it("scores a terminal child reached exactly at the node budget", async () => {
+    const session = DrawbackGameSession.create(
+      { white: unrestrictedRule, black: unrestrictedRule },
+      new Mulberry32(41),
+      "k7/8/8/8/8/8/4r3/4K2R w - - 0 1",
+    );
+    const root = session.legalMoves().find(
+      (move) => move.from === "h1" && move.to === "h2",
+    );
+    if (root === undefined) {
+      throw new Error("Expected h1-h2 to be legal.");
+    }
+    let leafEvaluations = 0;
+
+    const result = await searchOmniscientDrawbackRootMove(
+      session,
+      root,
+      {
+        id: "terminal-boundary-test",
+        evaluate() {
+          leafEvaluations += 1;
+          return Promise.resolve(0);
+        },
+      },
+      { depth: 2, maxNodes: 2 },
+    );
+
+    expect(result.score).toBeLessThan(-900_000);
+    expect(result.principalVariation).toEqual([
+      root,
+      expect.objectContaining({
+        from: "e2",
+        to: "e1",
+        captured: "king",
+      }),
+    ]);
+    expect(result.truncated).toBe(true);
+    expect(result.nodes).toBe(2);
+    expect(leafEvaluations).toBe(0);
+  });
+
   it("honors cancellation before search begins", async () => {
     const session = DrawbackGameSession.create(
       { white: unrestrictedRule, black: unrestrictedRule },
