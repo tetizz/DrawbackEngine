@@ -64,6 +64,16 @@ pnpm benchmark:posterior \
   0 30 2 2 10000
 ```
 
+Before candidate output was read, the monolithic execution was found to be
+too slow to use available CPU cores: the second cohort took several minutes
+for its first position. Either command may therefore be executed as six
+contiguous five-game shards with starts `0`, `5`, `10`, `15`, `20`, and `25`.
+The union, order, policies, depth, budget, and oracle calculations are
+unchanged. The committed shard combiner must reject a gap, duplicate,
+parameter mismatch, malformed record, or inconsistent per-shard summary and
+must reproduce one ordered 30-position report. Operational parallelism is not
+a model or gate change.
+
 The benchmark reports production `worst-case`, rejected
 `posterior-expected`, and candidate `posterior-cvar-25`. Oracle scoring is
 memoized only when policies choose the same root move; this cannot change an
