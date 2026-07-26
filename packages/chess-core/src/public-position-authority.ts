@@ -11,7 +11,7 @@ import type { MoveCommand } from "./game-session.js";
 import { sameMove, toChessMove } from "./move-adapter.js";
 
 export interface StandardChessPositionSnapshot {
-  readonly format: "drawbackengine-public-position";
+  readonly format: "drawbacktrainer-public-position";
   readonly version: 1;
   readonly authorityId: "standard-chess/v1";
   readonly fen: string;
@@ -31,7 +31,7 @@ export function createStandardChessPositionSnapshot(
 ): StandardChessPositionSnapshot {
   const chess = new Chess(fen);
   return Object.freeze({
-    format: "drawbackengine-public-position",
+    format: "drawbacktrainer-public-position",
     version: 1,
     authorityId: "standard-chess/v1",
     fen: chess.fen(),
@@ -59,7 +59,7 @@ export function validatePublicPositionAuthoritySnapshot(
     throw new TypeError("Standard chess position snapshot keys are invalid.");
   }
   if (
-    input["format"] !== "drawbackengine-public-position"
+    input["format"] !== "drawbacktrainer-public-position"
     || input["version"] !== 1
     || typeof input["fen"] !== "string"
   ) {

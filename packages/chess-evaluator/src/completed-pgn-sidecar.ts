@@ -14,7 +14,7 @@ import {
 import type { UciSearchLimit } from "./types.js";
 
 export const COMPLETED_PGN_EVALUATOR_SIDECAR_FORMAT =
-  "drawbackengine-completed-pgn-evaluator-sidecar";
+  "drawbacktrainer-completed-pgn-evaluator-sidecar";
 export const COMPLETED_PGN_EVALUATOR_SIDECAR_VERSION = 1;
 export const MAX_COMPLETED_PGN_EVALUATOR_SIDECAR_BYTES = 8 * 1024 * 1024;
 

@@ -54,7 +54,7 @@ interface KingPassantRight {
 }
 
 export interface CapturableKingPositionSnapshot {
-  readonly format: "drawbackengine-public-position";
+  readonly format: "drawbacktrainer-public-position";
   readonly version: 1;
   readonly authorityId: "capturable-king/v1";
   readonly fen: string;
@@ -185,7 +185,7 @@ export class CapturableKingPosition {
    */
   public snapshot(): CapturableKingPositionSnapshot {
     return deepFreeze({
-      format: "drawbackengine-public-position",
+      format: "drawbacktrainer-public-position",
       version: 1,
       authorityId: "capturable-king/v1",
       fen: this.fen,
@@ -637,7 +637,7 @@ function validateSnapshot(snapshot: unknown): CapturableKingPositionSnapshot {
     "position snapshot",
   );
   if (
-    value["format"] !== "drawbackengine-public-position"
+    value["format"] !== "drawbacktrainer-public-position"
     || value["version"] !== 1
     || value["authorityId"] !== "capturable-king/v1"
     || typeof value["fen"] !== "string"
@@ -658,7 +658,7 @@ function validateSnapshot(snapshot: unknown): CapturableKingPositionSnapshot {
     );
   }
   return {
-    format: "drawbackengine-public-position",
+    format: "drawbacktrainer-public-position",
     version: 1,
     authorityId: "capturable-king/v1",
     fen: value["fen"],

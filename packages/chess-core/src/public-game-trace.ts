@@ -14,7 +14,7 @@ import {
 const TRACE_BRAND: unique symbol = Symbol("PublicGameTrace");
 
 export interface PublicGameTrace {
-  readonly format: "drawbackengine-public-game-trace";
+  readonly format: "drawbacktrainer-public-game-trace";
   readonly version: 1;
   readonly authorityId: PositionAuthorityId;
   readonly ply: number;
@@ -134,7 +134,7 @@ function mintTrace(
   moves: readonly ChessMove[],
 ): PublicGameTrace {
   const trace = Object.freeze({
-    format: "drawbackengine-public-game-trace" as const,
+    format: "drawbacktrainer-public-game-trace" as const,
     version: 1 as const,
     authorityId: origin.authorityId,
     ply: moves.length,
