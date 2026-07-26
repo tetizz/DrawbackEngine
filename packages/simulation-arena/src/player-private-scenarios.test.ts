@@ -13,6 +13,7 @@ import {
 } from "./player-private-catalog.js";
 import {
   AUDITED_OPPONENT_PROFILE,
+  CATALOG_BALANCED_KING_DIAGNOSTIC_PROFILE,
   KING_CAPTURE_DIAGNOSTIC_PROFILE,
   KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
   resolvePlayerPrivateTrainingProfile,
@@ -49,6 +50,16 @@ describe("player-private diagnostic scenarios", () => {
     expect(resolvePlayerPrivateTrainingProfile(
       KING_CAPTURE_DIAGNOSTIC_PROFILE.id,
     )).toBe(KING_CAPTURE_DIAGNOSTIC_PROFILE);
+    expect(CATALOG_BALANCED_KING_DIAGNOSTIC_PROFILE).toMatchObject({
+      id: "catalog-balanced-king-diagnostics-v1",
+      scenarios: KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
+    });
+    expect(
+      CATALOG_BALANCED_KING_DIAGNOSTIC_PROFILE.ruleIds,
+    ).toBeUndefined();
+    expect(resolvePlayerPrivateTrainingProfile(
+      CATALOG_BALANCED_KING_DIAGNOSTIC_PROFILE.id,
+    )).toBe(CATALOG_BALANCED_KING_DIAGNOSTIC_PROFILE);
     expect(AUDITED_OPPONENT_PROFILE).toMatchObject({
       id: "audited-opponent-v1",
       opponentAggregation: "worst-case",

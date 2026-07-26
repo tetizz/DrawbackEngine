@@ -145,6 +145,13 @@ deliberately create public king-capture opportunities, promotion paths, and
 check-obligation sequences that are too rare in shallow ordinary-start
 self-play. The profile ID is preserved in the agent search-policy provenance.
 
+The companion `catalog-balanced-king-diagnostics-v1` profile reuses those
+public positions with the complete 25-label schedule. Because every label and
+ordered pair remains balanced, it provides non-target hard negatives without
+making the diagnostic position itself evidence that one of five rules was
+assigned. Concentrated and balanced profiles have distinct policy IDs so
+corpora cannot silently mix the two interventions.
+
 The named `audited-opponent-v1` profile uses ordinary starts and the complete
 25-label schedule while replacing the unrestricted control with an equal
 audited prior. Public replay eliminates exactly contradicted label/parameter

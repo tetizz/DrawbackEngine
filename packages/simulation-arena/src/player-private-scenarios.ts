@@ -105,6 +105,21 @@ export const KING_CAPTURE_DIAGNOSTIC_PROFILE: PlayerPrivateTrainingProfile =
     scenarios: KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
   });
 
+/**
+ * Uses the same public diagnostic positions with the complete audited catalog.
+ *
+ * This profile supplies hard negatives for every non-king-capture rule and
+ * preserves the scheduler's equal per-label prior. It is intentionally
+ * separate from the concentrated five-rule profile so experiments can measure
+ * whether gains come from the diagnostic event rather than class oversampling.
+ */
+export const CATALOG_BALANCED_KING_DIAGNOSTIC_PROFILE:
+  PlayerPrivateTrainingProfile = Object.freeze({
+    id: "catalog-balanced-king-diagnostics-v1",
+    policyId: "material-player-private-balanced-king-diagnostics/v1",
+    scenarios: KING_CAPTURE_DIAGNOSTIC_SCENARIOS,
+  });
+
 export const AUDITED_OPPONENT_PROFILE: PlayerPrivateTrainingProfile =
   Object.freeze({
     id: "audited-opponent-v1",
@@ -119,6 +134,7 @@ export const AUDITED_OPPONENT_PROFILE: PlayerPrivateTrainingProfile =
 export const PLAYER_PRIVATE_TRAINING_PROFILES = Object.freeze([
   STANDARD_PLAYER_PRIVATE_PROFILE,
   KING_CAPTURE_DIAGNOSTIC_PROFILE,
+  CATALOG_BALANCED_KING_DIAGNOSTIC_PROFILE,
   AUDITED_OPPONENT_PROFILE,
 ]);
 

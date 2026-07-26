@@ -144,6 +144,12 @@ thresholds, and next-check obligations. Starting positions are selected only
 from the gameplay seed domain; hidden labels and parameter seeds cannot affect
 them. Use separate seed roots for selection or test corpora.
 
+Use `catalog-balanced-king-diagnostics-v1` with the same command to schedule
+all 25 audited labels over those eight positions. This supplies non-target
+hard negatives and keeps every label/color marginal and ordered pair balanced;
+it is the preferred profile when a five-rule diagnostic supplement would
+otherwise change the learned class prior.
+
 Use `audited-opponent-v1` to make both private search agents reason against all
 publicly surviving audited drawbacks instead of the unrestricted control:
 
