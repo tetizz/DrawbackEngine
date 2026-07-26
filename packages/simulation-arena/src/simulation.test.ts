@@ -78,4 +78,20 @@ describe("simulateGame", () => {
       }),
     ).toThrow(RangeError);
   });
+
+  it("accepts seed zero and rejects seeds outside the serialized domain", () => {
+    const config = {
+      maxPlies: 1,
+      rules: { white: unrestrictedRule, black: unrestrictedRule },
+      whiteAgent: randomLegalAgent,
+      blackAgent: randomLegalAgent,
+    } as const;
+    expect(simulateGame({ ...config, seed: 0 }).seed).toBe(0);
+    expect(() => simulateGame({ ...config, seed: -1 })).toThrow(
+      "unsigned 32-bit",
+    );
+    expect(() =>
+      simulateGame({ ...config, seed: 0x1_0000_0000 }),
+    ).toThrow("unsigned 32-bit");
+  });
 });

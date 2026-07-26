@@ -56,6 +56,18 @@ export interface AsyncSimulationConfig<
 }
 
 const DEFAULT_MAX_PLIES = 300;
+const MAX_UNSIGNED_32_BIT_INTEGER = 0xffff_ffff;
+
+function checkedSeed(seed: number): number {
+  if (
+    !Number.isSafeInteger(seed)
+    || seed < 0
+    || seed > MAX_UNSIGNED_32_BIT_INTEGER
+  ) {
+    throw new RangeError("seed must be an unsigned 32-bit integer.");
+  }
+  return seed;
+}
 
 function toCommand(
   move: AgentView["legalMoves"][number],
@@ -96,13 +108,15 @@ export async function simulateGameAsync<
     throw new RangeError("maxPlies must be a positive safe integer.");
   }
 
-  const rng = new Mulberry32(config.seed);
+  const seed = checkedSeed(config.seed);
+  const rng = new Mulberry32(seed);
   const session = await AsyncGameSession.create(config.rules, rng, {
     ...(config.fen === undefined ? {} : { fen: config.fen }),
     ...(config.turnConstraintProvider === undefined
       ? {}
       : { provider: config.turnConstraintProvider }),
   });
+  const initialFen = session.fen;
   const plies: SimulationPly[] = [];
 
   while (session.result.kind === "active" && plies.length < maxPlies) {
@@ -166,7 +180,9 @@ export async function simulateGameAsync<
   }
 
   return {
-    seed: config.seed,
+    seed,
+    plyLimit: maxPlies,
+    initialFen,
     result: session.result,
     plies,
     finalFen: session.fen,

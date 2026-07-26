@@ -103,7 +103,9 @@ and refuse to overwrite an existing file. These traces contain post-game
 labels and secret rule state, so they belong in trusted local storage and are
 never model inputs by themselves. DrawbackGuesser owns the separate,
 leakage-checked per-move training schema; a release corpus must pass that
-consumer contract before training.
+consumer contract before training. The exact versioned format and trust
+boundary are documented in
+[`docs/architecture/simulation-traces.md`](docs/architecture/simulation-traces.md).
 
 Ask the exact drawback-aware search for a move:
 

@@ -41,6 +41,8 @@ const expectedArenaFiles = new Set([
   "stockfish-agent.test.ts",
   "stockfish-agent.ts",
   "test-uci-config.ts",
+  "trace.test.ts",
+  "trace.ts",
   "worker-retry.test.ts",
   "worker-retry.ts",
 ]);
@@ -132,6 +134,7 @@ const manifests = [
   "packages/probe-search/package.json",
   "packages/shared/package.json",
   "packages/simulation-arena/package.json",
+  "packages/simulation-trace/package.json",
 ];
 for (const manifestPath of manifests) {
   const manifest = JSON.parse(await readFile(join(repositoryRoot, manifestPath), "utf8"));

@@ -26,6 +26,7 @@
     "@drawbackengine/drawback-search": "workspace:*",
     "@drawbackengine/drawback-engine": "workspace:*",
     "@drawbackengine/simulation-arena": "workspace:*",
+    "@drawbackengine/simulation-trace": "workspace:*",
     "@drawbackengine/shared": "workspace:*"
   },
   "devDependencies": {

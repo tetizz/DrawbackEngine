@@ -6,6 +6,7 @@ export type {
 } from "./async-simulation.js";
 export { createStockfishAgent, toUciMove } from "./stockfish-agent.js";
 export type { StockfishAgentOptions } from "./stockfish-agent.js";
+export { createPrivateSimulationTrace } from "./trace.js";
 export {
   createTemperatureAgent,
   greedyMaterialAgent,

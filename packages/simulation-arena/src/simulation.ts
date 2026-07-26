@@ -63,6 +63,8 @@ export interface HiddenDrawbackReveal {
 
 export interface SimulationResult {
   readonly seed: number;
+  readonly plyLimit: number;
+  readonly initialFen: string;
   readonly result: SessionResult;
   readonly plies: readonly SimulationPly[];
   readonly finalFen: string;
@@ -75,6 +77,18 @@ export interface SimulationResult {
 }
 
 const DEFAULT_MAX_PLIES = 300;
+const MAX_UNSIGNED_32_BIT_INTEGER = 0xffff_ffff;
+
+function checkedSeed(seed: number): number {
+  if (
+    !Number.isSafeInteger(seed)
+    || seed < 0
+    || seed > MAX_UNSIGNED_32_BIT_INTEGER
+  ) {
+    throw new RangeError("seed must be an unsigned 32-bit integer.");
+  }
+  return seed;
+}
 
 export const randomLegalAgent: SimulationAgent = {
   id: "random-legal",
@@ -118,8 +132,10 @@ export function simulateGame<
     throw new RangeError("maxPlies must be a positive safe integer.");
   }
 
-  const rng = new Mulberry32(config.seed);
+  const seed = checkedSeed(config.seed);
+  const rng = new Mulberry32(seed);
   const session = new GameSession(config.rules, rng, config.fen);
+  const initialFen = session.fen;
   const plies: SimulationPly[] = [];
 
   while (session.result.kind === "active" && plies.length < maxPlies) {
@@ -158,7 +174,9 @@ export function simulateGame<
   }
 
   return {
-    seed: config.seed,
+    seed,
+    plyLimit: maxPlies,
+    initialFen,
     result: session.result,
     plies,
     finalFen: session.fen,

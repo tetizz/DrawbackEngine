@@ -11,6 +11,7 @@ const packageChecks = [
   ["packages/probe-search/dist/index.js", "searchDiagnosticMoves"],
   ["packages/drawback-search/dist/index.js", "searchOmniscientDrawbackMove"],
   ["packages/chess-evaluator/dist/index.js", "UciClient"],
+  ["packages/simulation-trace/dist/index.js", "parsePrivateSimulationTraceRecord"],
   ["packages/simulation-arena/dist/index.js", "simulateGame"],
 ];
 

@@ -1,5 +1,5 @@
 {
-  "name": "@drawbackengine/simulation-arena",
+  "name": "@drawbackengine/simulation-trace",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,6 +11,7 @@
     }
   },
   "files": ["dist"],
+  "sideEffects": false,
   "engines": {
     "node": ">=22"
   },
@@ -20,12 +21,7 @@
   },
   "dependencies": {
     "@drawbackengine/chess-core": "workspace:*",
-    "@drawbackengine/chess-evaluator": "workspace:*",
     "@drawbackengine/drawback-engine": "workspace:*",
-    "@drawbackengine/simulation-trace": "workspace:*",
     "@drawbackengine/shared": "workspace:*"
-  },
-  "devDependencies": {
-    "tsx": "^4.20.3"
   }
 }
