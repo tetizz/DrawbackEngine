@@ -76,6 +76,7 @@ export type {
   IterativePlayerPrivateMoveSelection,
 } from "./player-private-iterative-selection.js";
 export type {
+  PlayerPrivateOpponentAggregation,
   PlayerPrivateSearchInput,
   PlayerPrivateRootMoveSearchResult,
   PlayerPrivateSearchResult,

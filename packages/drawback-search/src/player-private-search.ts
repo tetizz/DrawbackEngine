@@ -27,6 +27,15 @@ const TERMINAL_SCORE = 1_000_000;
 const INFINITY = TERMINAL_SCORE + 100_000;
 const AUTHORITY_ID = "capturable-king/v1";
 
+export type PlayerPrivateOpponentAggregation =
+  | "worst-case"
+  | "posterior-expected";
+
+const PLAYER_PRIVATE_AGGREGATIONS: ReadonlySet<string> = new Set([
+  "worst-case",
+  "posterior-expected",
+]);
+
 const CAPTURE_VALUE: Readonly<
   Record<NonNullable<ChessMove["captured"]>, number>
 > = {
@@ -42,7 +51,7 @@ export interface PlayerPrivateSearchInput {
   readonly trace: PublicGameTrace;
   readonly own: OwnPlayerRuleCapability;
   readonly opponent: readonly PublicDrawbackHypothesis[];
-  readonly aggregation: "worst-case";
+  readonly aggregation: PlayerPrivateOpponentAggregation;
   readonly evaluator: DrawbackLeafEvaluator;
   readonly limits: DrawbackSearchLimits;
 }
@@ -58,7 +67,7 @@ export interface PlayerPrivateSearchResult {
   readonly rootColor: PlayerColor;
   readonly evaluatorId: string;
   readonly knowledgeMode: "player-private";
-  readonly aggregation: "worst-case";
+  readonly aggregation: PlayerPrivateOpponentAggregation;
   readonly opponentHypothesisCount: number;
 }
 
@@ -77,6 +86,7 @@ interface PrivateNode {
 
 interface SearchState {
   readonly rootColor: PlayerColor;
+  readonly aggregation: PlayerPrivateOpponentAggregation;
   readonly evaluator: DrawbackLeafEvaluator;
   readonly limits: DrawbackSearchLimits;
   nodes: number;
@@ -97,6 +107,14 @@ interface MoveBranch {
 interface TurnExpansion {
   readonly terminalScore: number | null;
   readonly moves: readonly ChessMove[];
+  readonly opponentWorlds?: readonly OpponentWorldExpansion[];
+}
+
+interface OpponentWorldExpansion {
+  readonly hypothesisId: string;
+  readonly probability: number;
+  readonly terminalScore: number | null;
+  readonly legalMoveIds: readonly string[];
 }
 
 interface PreparedSearchRoot {
@@ -111,6 +129,7 @@ export async function searchPlayerPrivateDrawbackMove(
   const prepared = prepareSearchRoot(input);
   const state: SearchState = {
     rootColor: prepared.rootColor,
+    aggregation: input.aggregation,
     evaluator: input.evaluator,
     limits: input.limits,
     nodes: 1,
@@ -163,7 +182,7 @@ export async function searchPlayerPrivateDrawbackMove(
     rootColor: prepared.rootColor,
     evaluatorId: input.evaluator.id,
     knowledgeMode: "player-private",
-    aggregation: "worst-case",
+    aggregation: input.aggregation,
     opponentHypothesisCount: input.opponent.length,
   });
 }
@@ -190,6 +209,7 @@ export async function searchPlayerPrivateDrawbackRootMove(
   }
   const state: SearchState = {
     rootColor: prepared.rootColor,
+    aggregation: input.aggregation,
     evaluator: input.evaluator,
     limits: input.limits,
     nodes: 1,
@@ -217,7 +237,7 @@ export async function searchPlayerPrivateDrawbackRootMove(
     rootColor: prepared.rootColor,
     evaluatorId: input.evaluator.id,
     knowledgeMode: "player-private",
-    aggregation: "worst-case",
+    aggregation: input.aggregation,
     opponentHypothesisCount: input.opponent.length,
     depth: input.limits.depth,
   });
@@ -290,10 +310,22 @@ async function searchNode(
     if (state.nodes >= state.limits.maxNodes) {
       state.truncated = true;
     }
-    return evaluateLeaf(node, ply, state, expansion.moves);
+    return evaluateLeaf(node, ply, state, expansion);
   }
 
   const ownTurn = node.position.turn === state.rootColor;
+  if (
+    !ownTurn
+    && state.aggregation === "posterior-expected"
+  ) {
+    return searchPosteriorExpectedOpponentNode(
+      node,
+      expansion,
+      depth,
+      ply,
+      state,
+    );
+  }
   let bestScore = ownTurn ? -INFINITY : INFINITY;
   let bestLine: readonly ChessMove[] = [];
   let alpha = alphaInput;
@@ -387,11 +419,34 @@ function expandTurn(
   }
 
   const liveMoves: ChessMove[] = [];
+  const opponentWorlds: OpponentWorldExpansion[] = [];
   for (const hypothesis of node.opponent) {
     if (hypothesis.capability.checkStartOfTurnLoss(view) !== null) {
+      opponentWorlds.push({
+        hypothesisId: hypothesis.hypothesisId,
+        probability: hypothesis.probability,
+        terminalScore: TERMINAL_SCORE - ply,
+        legalMoveIds: [],
+      });
       continue;
     }
-    for (const move of hypothesis.capability.legalMoves(view, authorityMoves)) {
+    const legalMoves = hypothesis.capability.legalMoves(view, authorityMoves);
+    if (legalMoves.length === 0) {
+      opponentWorlds.push({
+        hypothesisId: hypothesis.hypothesisId,
+        probability: hypothesis.probability,
+        terminalScore: TERMINAL_SCORE - ply,
+        legalMoveIds: [],
+      });
+      continue;
+    }
+    opponentWorlds.push({
+      hypothesisId: hypothesis.hypothesisId,
+      probability: hypothesis.probability,
+      terminalScore: null,
+      legalMoveIds: Object.freeze(legalMoves.map(moveId)),
+    });
+    for (const move of legalMoves) {
       if (!liveMoves.some((candidate) => sameMove(candidate, move))) {
         liveMoves.push(move);
       }
@@ -405,7 +460,139 @@ function expandTurn(
     : {
         terminalScore: null,
         moves: orderedMoves(liveMoves),
+        opponentWorlds: Object.freeze(opponentWorlds),
       };
+}
+
+/**
+ * Computes Bayes-risk search at an opponent node.
+ *
+ * Each hypothesis is a possible private-rule world. In that world the
+ * opponent knows its rule and chooses its lowest-valued legal reply. The root
+ * player averages those world-specific minima by the public posterior. Each
+ * reply branch is searched once and conditions its child posterior by exact
+ * legality, so contradicted worlds never reappear.
+ *
+ * Expected-value nodes deliberately use full child windows: ordinary
+ * alpha-beta bounds are unsound across a weighted sum of independently
+ * minimizing worlds.
+ */
+async function searchPosteriorExpectedOpponentNode(
+  node: PrivateNode,
+  expansion: TurnExpansion,
+  depth: number,
+  ply: number,
+  state: SearchState,
+): Promise<NodeResult> {
+  const worlds = requiredOpponentWorlds(expansion);
+  const branches = opponentBranches(node, expansion.moves);
+  const evaluated = new Map<string, EvaluatedMoveBranch>();
+  for (const branch of branches) {
+    const result = await searchNode(
+      branch.node,
+      depth - 1,
+      -INFINITY,
+      INFINITY,
+      ply + 1,
+      state,
+    );
+    evaluated.set(moveId(branch.move), { branch, result });
+  }
+
+  let score = 0;
+  const representativeMass = new Map<string, number>();
+  for (const world of worlds) {
+    if (world.terminalScore !== null) {
+      score += world.probability * world.terminalScore;
+      continue;
+    }
+    const selected = minimumWorldReply(world, evaluated);
+    score += world.probability * selected.result.score;
+    const id = moveId(selected.branch.move);
+    representativeMass.set(
+      id,
+      (representativeMass.get(id) ?? 0) + world.probability,
+    );
+  }
+  const representative = representativeExpectedReply(
+    representativeMass,
+    evaluated,
+  );
+  return {
+    score,
+    principalVariation:
+      representative === null
+        ? []
+        : [
+            representative.branch.move,
+            ...representative.result.principalVariation,
+          ],
+  };
+}
+
+interface EvaluatedMoveBranch {
+  readonly branch: MoveBranch;
+  readonly result: NodeResult;
+}
+
+function minimumWorldReply(
+  world: OpponentWorldExpansion,
+  evaluated: ReadonlyMap<string, EvaluatedMoveBranch>,
+): EvaluatedMoveBranch {
+  let selected: EvaluatedMoveBranch | null = null;
+  for (const id of [...world.legalMoveIds].sort()) {
+    const candidate = evaluated.get(id);
+    if (candidate === undefined) {
+      throw new Error(
+        `${world.hypothesisId} permits missing opponent branch ${id}.`,
+      );
+    }
+    if (
+      selected === null
+      || candidate.result.score < selected.result.score
+      || (
+        candidate.result.score === selected.result.score
+        && id.localeCompare(moveId(selected.branch.move)) < 0
+      )
+    ) {
+      selected = candidate;
+    }
+  }
+  if (selected === null) {
+    throw new Error(
+      `${world.hypothesisId} has no legal reply or terminal result.`,
+    );
+  }
+  return selected;
+}
+
+function representativeExpectedReply(
+  mass: ReadonlyMap<string, number>,
+  evaluated: ReadonlyMap<string, EvaluatedMoveBranch>,
+): EvaluatedMoveBranch | null {
+  const selectedId = [...mass.entries()].sort(
+    ([leftId, leftMass], [rightId, rightMass]) =>
+      rightMass - leftMass || leftId.localeCompare(rightId),
+  )[0]?.[0];
+  if (selectedId === undefined) {
+    return null;
+  }
+  const selected = evaluated.get(selectedId);
+  if (selected === undefined) {
+    throw new Error(`Representative opponent branch ${selectedId} is missing.`);
+  }
+  return selected;
+}
+
+function requiredOpponentWorlds(
+  expansion: TurnExpansion,
+): readonly OpponentWorldExpansion[] {
+  if (expansion.opponentWorlds === undefined) {
+    throw new Error(
+      "Posterior-expected opponent search requires world expansions.",
+    );
+  }
+  return expansion.opponentWorlds;
 }
 
 function applyOwnMove(node: PrivateNode, move: ChessMove): PrivateNode {
@@ -478,14 +665,25 @@ async function evaluateLeaf(
   node: PrivateNode,
   ply: number,
   state: SearchState,
-  suppliedMoves?: readonly ChessMove[],
+  suppliedExpansion?: TurnExpansion,
 ): Promise<NodeResult> {
   const expansion =
-    suppliedMoves === undefined
+    suppliedExpansion === undefined
       ? expandTurn(node, state.rootColor, ply)
-      : { terminalScore: null, moves: suppliedMoves };
+      : suppliedExpansion;
   if (expansion.terminalScore !== null) {
     return { score: expansion.terminalScore, principalVariation: [] };
+  }
+  if (
+    node.position.turn !== state.rootColor
+    && state.aggregation === "posterior-expected"
+  ) {
+    return evaluatePosteriorExpectedOpponentLeaf(
+      node,
+      ply,
+      state,
+      expansion,
+    );
   }
   const immediateKingCapture = expansion.moves.find(
     (move) => move.captured === "king",
@@ -499,6 +697,99 @@ async function evaluateLeaf(
       principalVariation: [immediateKingCapture],
     };
   }
+  return {
+    score: await evaluateStaticLeaf(node, state, expansion.moves),
+    principalVariation: [],
+  };
+}
+
+async function evaluatePosteriorExpectedOpponentLeaf(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+): Promise<NodeResult> {
+  const worlds = requiredOpponentWorlds(expansion);
+  const movesById = new Map(
+    expansion.moves.map((move) => [moveId(move), move] as const),
+  );
+  const staticScores = new Map<string, number>();
+  const representativeMass = new Map<string, number>();
+  let score = 0;
+  for (const world of worlds) {
+    if (world.terminalScore !== null) {
+      score += world.probability * world.terminalScore;
+      continue;
+    }
+    const captureId = firstKingCaptureId(world, movesById);
+    if (captureId === undefined) {
+      const maskId = [...world.legalMoveIds].sort().join(",");
+      let staticScore = staticScores.get(maskId);
+      if (staticScore === undefined) {
+        staticScore = await evaluateStaticLeaf(
+          node,
+          state,
+          movesForWorld(world, movesById),
+        );
+        staticScores.set(maskId, staticScore);
+      }
+      score += world.probability * staticScore;
+      continue;
+    }
+    score += world.probability * (-TERMINAL_SCORE + ply + 1);
+    representativeMass.set(
+      captureId,
+      (representativeMass.get(captureId) ?? 0) + world.probability,
+    );
+  }
+  const selectedCaptureId = [...representativeMass.entries()].sort(
+    ([leftId, leftMass], [rightId, rightMass]) =>
+      rightMass - leftMass || leftId.localeCompare(rightId),
+  )[0]?.[0];
+  const selectedCapture =
+    selectedCaptureId === undefined
+      ? undefined
+      : movesById.get(selectedCaptureId);
+  return {
+    score,
+    principalVariation:
+      selectedCapture === undefined ? [] : [selectedCapture],
+  };
+}
+
+function firstKingCaptureId(
+  world: OpponentWorldExpansion,
+  movesById: ReadonlyMap<string, ChessMove>,
+): string | undefined {
+  return [...world.legalMoveIds]
+    .sort()
+    .find((id) => movesById.get(id)?.captured === "king");
+}
+
+function movesForWorld(
+  world: OpponentWorldExpansion,
+  movesById: ReadonlyMap<string, ChessMove>,
+): readonly ChessMove[] {
+  return Object.freeze(
+    [...world.legalMoveIds]
+      .sort()
+      .map((id) => {
+        const move = movesById.get(id);
+        if (move === undefined) {
+          throw new Error(
+            `${world.hypothesisId} permits missing leaf move ${id}.`,
+          );
+        }
+        return move;
+      }),
+  );
+}
+
+async function evaluateStaticLeaf(
+  node: PrivateNode,
+  state: SearchState,
+  moves: readonly ChessMove[],
+): Promise<number> {
   state.leaves += 1;
   const publicPosition = node.position.snapshot();
   const score = await state.evaluator.evaluate(
@@ -506,7 +797,7 @@ async function evaluateLeaf(
       authorityId: "capturable-king/v1",
       fen: node.position.fen,
       turn: node.position.turn,
-      legalMoves: expansion.moves,
+      legalMoves: moves,
       history: node.history,
       orthodoxCompatible: node.position.orthodoxCompatible,
       kingPassantActive: publicPosition.kingPassant !== null,
@@ -516,10 +807,7 @@ async function evaluateLeaf(
   if (!Number.isFinite(score)) {
     throw new Error(`${state.evaluator.id} returned a non-finite leaf score.`);
   }
-  return {
-    score: node.position.turn === state.rootColor ? score : -score,
-    principalVariation: [],
-  };
+  return node.position.turn === state.rootColor ? score : -score;
 }
 
 function normalizeHypotheses(
@@ -579,6 +867,11 @@ function validateInput(input: PlayerPrivateSearchInput): void {
   }
   if (input.own.authorityId !== AUTHORITY_ID) {
     throw new Error("Own rule capability uses the wrong position authority.");
+  }
+  if (!PLAYER_PRIVATE_AGGREGATIONS.has(input.aggregation)) {
+    throw new RangeError(
+      "Player-private aggregation must be worst-case or posterior-expected.",
+    );
   }
   const position = CapturableKingPosition.fromSnapshot(snapshot);
   const currentPosition: PositionView = {

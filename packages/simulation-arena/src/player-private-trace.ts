@@ -205,6 +205,8 @@ function toAgent(
         path,
       ),
       leafCacheHistoryMode: agent.searchPolicy.leafCacheHistoryMode,
+      opponentAggregation:
+        agent.searchPolicy.opponentAggregation ?? "worst-case",
       temperatureCp: agent.searchPolicy.temperatureCp,
       topK: agent.searchPolicy.topK,
     },

@@ -6,6 +6,7 @@ import {
   type DrawbackLeafEvaluator,
   type IterativePlayerPrivateSearchLimits,
   type OwnPlayerRuleCapability,
+  type PlayerPrivateOpponentAggregation,
   type PublicDrawbackHypothesis,
   type RootTemperatureSelectionOptions,
 } from "@drawbackengine/drawback-search";
@@ -13,6 +14,11 @@ import type {
   PlayerColor,
   RandomSource,
 } from "@drawbackengine/shared";
+
+const OPPONENT_AGGREGATIONS: ReadonlySet<string> = new Set([
+  "worst-case",
+  "posterior-expected",
+]);
 
 export interface PlayerPrivateAgentView {
   readonly color: PlayerColor;
@@ -41,6 +47,7 @@ export interface PlayerPrivateAgentSearchPolicy {
   readonly maxNodes: number;
   readonly leafCacheEntries: number | null;
   readonly leafCacheHistoryMode: "full" | "ignore";
+  readonly opponentAggregation?: PlayerPrivateOpponentAggregation;
   readonly temperatureCp: number;
   readonly topK: number | null;
 }
@@ -50,6 +57,7 @@ export interface PlayerPrivateSearchAgentOptions {
   readonly policyId?: string;
   readonly evaluator: DrawbackLeafEvaluator;
   readonly limits: IterativePlayerPrivateSearchLimits;
+  readonly opponentAggregation?: PlayerPrivateOpponentAggregation;
   readonly temperature: RootTemperatureSelectionOptions;
   readonly strength?: number;
 }
@@ -98,6 +106,13 @@ export function createPlayerPrivateSearchAgent(
       ? {}
       : { topK: options.temperature.topK }),
   });
+  const opponentAggregation =
+    options.opponentAggregation ?? "worst-case";
+  if (!OPPONENT_AGGREGATIONS.has(opponentAggregation)) {
+    throw new RangeError(
+      "Opponent aggregation must be worst-case or posterior-expected.",
+    );
+  }
   validateSnapshottedOptions(evaluator.id, limits, temperature);
   return Object.freeze({
     id: options.id,
@@ -115,6 +130,7 @@ export function createPlayerPrivateSearchAgent(
         ?? DEFAULT_PLAYER_PRIVATE_LEAF_CACHE_ENTRIES,
       leafCacheHistoryMode:
         limits.leafCacheHistoryMode ?? "full",
+      opponentAggregation,
       temperatureCp: temperature.temperatureCp,
       topK: temperature.topK ?? null,
     }),
@@ -127,7 +143,7 @@ export function createPlayerPrivateSearchAgent(
           trace: view.trace,
           own: view.own,
           opponent: view.opponent,
-          aggregation: "worst-case",
+          aggregation: opponentAggregation,
         },
         evaluator,
         limits,

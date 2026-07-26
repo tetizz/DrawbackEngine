@@ -250,7 +250,7 @@ function searchPolicyAt(
       "temperatureCp",
       "topK",
     ],
-    [],
+    ["opponentAggregation"],
     path,
   );
   const maxDepth = safeIntegerAt(object.maxDepth, `${path}.maxDepth`, 1);
@@ -270,6 +270,16 @@ function searchPolicyAt(
   ) {
     throw new TypeError(
       `${path}.leafCacheHistoryMode must be full or ignore.`,
+    );
+  }
+  const opponentAggregation = object["opponentAggregation"];
+  if (
+    opponentAggregation !== undefined
+    && opponentAggregation !== "worst-case"
+    && opponentAggregation !== "posterior-expected"
+  ) {
+    throw new TypeError(
+      `${path}.opponentAggregation must be worst-case or posterior-expected.`,
     );
   }
   const temperatureCp = object.temperatureCp;
@@ -294,6 +304,9 @@ function searchPolicyAt(
     maxNodes,
     leafCacheEntries,
     leafCacheHistoryMode,
+    ...(opponentAggregation === undefined
+      ? {}
+      : { opponentAggregation }),
     temperatureCp,
     topK,
   };

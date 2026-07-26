@@ -77,6 +77,7 @@ IDs, and starting position. It rejects:
 - an active-player pre-move secret that differs from exact rule state;
 - either side's final secret state when it differs from full-game replay;
 - an agent without complete immutable drawback-search provenance;
+- an aggregation value other than `worst-case` or `posterior-expected`;
 - an unsupported ruleset, random policy, or opponent-hypothesis policy;
 - a result or limit-stop fact that differs from the session's exact terminal
   precedence.
@@ -84,6 +85,11 @@ IDs, and starting position. It rejects:
 Secret objects are compared as canonical JSON values, so property insertion
 order is irrelevant while non-finite values, accessors, functions, symbols,
 classes, and excessive nesting remain invalid.
+
+New capturable trace producers materialize `opponentAggregation` in each
+agent's search policy. Historical schema-version-1 records may omit only that
+field; absence means the sole historical behavior, `worst-case`. The parser
+preserves absence when reading an old record and rejects every unknown value.
 
 ## Observation and label boundary
 
@@ -136,9 +142,12 @@ self-play. The profile ID is preserved in the agent search-policy provenance.
 The named `audited-opponent-v1` profile uses ordinary starts and the complete
 ten-label schedule while replacing the unrestricted control with an equal
 audited prior. Public replay eliminates exactly contradicted label/parameter
-particles and renormalizes survivors before search. The policy is recorded in
-`hypothesisPolicy`; trace schema version 1 remains unchanged because this field
-was already a required, versioned provenance discriminator.
+particles and renormalizes survivors before search. It explicitly retains
+`worst-case` aggregation after `posterior-expected` failed its first
+validation-position promotion gate. The hypothesis source is recorded in
+`hypothesisPolicy`, while aggregation is recorded in each agent search policy.
+Trace schema version 1 remains backward compatible with historical records as
+described above.
 
 `streamPlayerPrivateAssignmentsParallel` retains at most one configured
 assignment window, emits strictly increasing global indexes, and is

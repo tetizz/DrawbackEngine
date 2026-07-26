@@ -81,6 +81,7 @@ describe("parallel player-private simulation", () => {
       const auditedPolicy: PlayerPrivateSearchPolicy = {
         ...policy,
         policyId: "audited-opponent-worker-test",
+        opponentAggregation: "posterior-expected",
         opponentHypotheses: {
           kind: "audited-uniform",
           version: 1,
@@ -96,6 +97,9 @@ describe("parallel player-private simulation", () => {
       expect(result?.hypothesisPolicyId).toBe("audited-uniform/v1");
       expect(result?.agents.white.searchPolicy?.policyId).toBe(
         "audited-opponent-worker-test",
+      );
+      expect(result?.agents.white.searchPolicy?.opponentAggregation).toBe(
+        "posterior-expected",
       );
     },
     30_000,
@@ -148,6 +152,15 @@ describe("parallel player-private simulation", () => {
         },
       });
     }).toThrow("audited-uniform");
+    expect(() => {
+      assertPlayerPrivateWorkerRequest({
+        ...valid,
+        policy: {
+          ...policy,
+          opponentAggregation: "unknown",
+        },
+      });
+    }).toThrow("opponentAggregation");
     expect(() => {
       assertPlayerPrivateWorkerRequest({
         ...valid,

@@ -164,6 +164,8 @@ function validateAgents(
       policy.leafCacheEntries
       ?? DEFAULT_PLAYER_PRIVATE_LEAF_CACHE_ENTRIES,
     leafCacheHistoryMode: policy.leafCacheHistoryMode ?? "full",
+    opponentAggregation:
+      policy.opponentAggregation ?? "worst-case",
     temperatureCp: policy.temperatureCp,
     topK: policy.topK ?? null,
   };

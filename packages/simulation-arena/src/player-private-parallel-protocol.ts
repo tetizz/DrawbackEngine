@@ -8,6 +8,9 @@ import {
   PLAYER_PRIVATE_RULE_IDS,
   type PlayerPrivateRuleId,
 } from "./player-private-catalog.js";
+import type {
+  PlayerPrivateOpponentAggregation,
+} from "@drawbackengine/drawback-search";
 
 export interface PlayerPrivateSearchPolicy {
   readonly policyId: string;
@@ -17,6 +20,7 @@ export interface PlayerPrivateSearchPolicy {
   readonly topK?: number;
   readonly leafCacheEntries?: number;
   readonly leafCacheHistoryMode?: "full" | "ignore";
+  readonly opponentAggregation?: PlayerPrivateOpponentAggregation;
   readonly evaluator: {
     readonly kind: "material";
     readonly version: 1;
@@ -234,6 +238,17 @@ export function assertPlayerPrivateSearchPolicy(value: unknown): void {
     ) {
       throw new RangeError(
         "leafCacheHistoryMode must be full or ignore.",
+      );
+    }
+  }
+  if (policy["opponentAggregation"] !== undefined) {
+    expected.push("opponentAggregation");
+    if (
+      policy["opponentAggregation"] !== "worst-case"
+      && policy["opponentAggregation"] !== "posterior-expected"
+    ) {
+      throw new TypeError(
+        "opponentAggregation must be worst-case or posterior-expected.",
       );
     }
   }

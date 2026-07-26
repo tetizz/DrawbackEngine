@@ -61,6 +61,8 @@ function createAgent(policy: PlayerPrivateSearchPolicy) {
     id: policy.policyId,
     policyId: policy.policyId,
     evaluator: drawbackMaterialEvaluator,
+    opponentAggregation:
+      policy.opponentAggregation ?? "worst-case",
     limits: {
       maxDepth: policy.maxDepth,
       maxNodes: policy.maxNodes,

@@ -3,6 +3,9 @@ import type { PlayerPrivateRuleId } from "./player-private-catalog.js";
 import type {
   PlayerPrivateOpponentHypothesisPolicy,
 } from "./player-private-parallel-protocol.js";
+import type {
+  PlayerPrivateOpponentAggregation,
+} from "@drawbackengine/drawback-search";
 
 export interface PlayerPrivateTrainingScenario {
   readonly id: string;
@@ -16,6 +19,7 @@ export interface PlayerPrivateTrainingProfile {
   readonly ruleIds?: readonly PlayerPrivateRuleId[];
   readonly scenarios?: readonly PlayerPrivateTrainingScenario[];
   readonly opponentHypotheses?: PlayerPrivateOpponentHypothesisPolicy;
+  readonly opponentAggregation?: PlayerPrivateOpponentAggregation;
 }
 
 const KING_CAPTURE_RULE_IDS = Object.freeze([
@@ -105,6 +109,7 @@ export const AUDITED_OPPONENT_PROFILE: PlayerPrivateTrainingProfile =
   Object.freeze({
     id: "audited-opponent-v1",
     policyId: "material-player-private-audited-opponent/v1",
+    opponentAggregation: "worst-case",
     opponentHypotheses: Object.freeze({
       kind: "audited-uniform",
       version: 1,

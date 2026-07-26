@@ -74,6 +74,8 @@ async function main(): Promise<void> {
       topK: 8,
       leafCacheEntries: 16_384,
       leafCacheHistoryMode: "full",
+      opponentAggregation:
+        profile.opponentAggregation ?? "worst-case",
       evaluator: { kind: "material", version: 1 },
       opponentHypotheses: {
         ...(profile.opponentHypotheses ?? {

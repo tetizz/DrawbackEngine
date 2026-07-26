@@ -70,6 +70,9 @@ describe("player-private simulation trace v1", () => {
       capturedKing: "white",
       method: "castling-en-passant",
     });
+    expect(trace.agents.white.searchPolicy.opponentAggregation).toBe(
+      "worst-case",
+    );
     expect(parsePlayerPrivateSimulationTraceRecord(
       JSON.parse(encoded) as unknown,
     )).toEqual(trace);
@@ -197,6 +200,55 @@ describe("player-private simulation trace v1", () => {
     ).toThrow("hypothesisPolicy is unsupported");
   });
 
+  it("accepts historical missing aggregation and rejects unknown aggregation", async () => {
+    const vegan = resolvePlayerPrivateRule("vegan");
+    const game = await simulatePlayerPrivateGame({
+      seed: 0x0a66_7e6a,
+      maxPlies: 1,
+      rules: { white: vegan, black: vegan },
+      whiteAgent: scriptedSearchAgent,
+      blackAgent: scriptedSearchAgent,
+    });
+    const trace = createPlayerPrivateSimulationTrace(game, 3);
+    const historicalWhitePolicy = withoutAggregation(
+      trace.agents.white.searchPolicy,
+    );
+    const historicalBlackPolicy = withoutAggregation(
+      trace.agents.black.searchPolicy,
+    );
+    const historical = {
+      ...trace,
+      agents: {
+        white: {
+          ...trace.agents.white,
+          searchPolicy: historicalWhitePolicy,
+        },
+        black: {
+          ...trace.agents.black,
+          searchPolicy: historicalBlackPolicy,
+        },
+      },
+    };
+
+    expect(parsePlayerPrivateSimulationTraceRecord(historical))
+      .toEqual(historical);
+    expect(() =>
+      parsePlayerPrivateSimulationTraceRecord({
+        ...trace,
+        agents: {
+          ...trace.agents,
+          white: {
+            ...trace.agents.white,
+            searchPolicy: {
+              ...trace.agents.white.searchPolicy,
+              opponentAggregation: "unknown",
+            },
+          },
+        },
+      })
+    ).toThrow("opponentAggregation");
+  });
+
   it(
     "round-trips deterministic generated games across every audited rule",
     async () => {
@@ -284,4 +336,10 @@ function matchingMove(
   return view.legalMoves.find(
     (move) => move.from === from && move.to === to,
   );
+}
+
+function withoutAggregation(value: object): Record<string, unknown> {
+  const copy = Object.fromEntries(Object.entries(value));
+  Reflect.deleteProperty(copy, "opponentAggregation");
+  return copy;
 }

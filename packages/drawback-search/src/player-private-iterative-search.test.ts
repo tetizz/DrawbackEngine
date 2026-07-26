@@ -161,6 +161,21 @@ describe("iterative player-private drawback search", () => {
     ).toBe(true);
   });
 
+  it("preserves posterior-expected aggregation through iterative search", async () => {
+    const result = await searchIterativePlayerPrivateDrawbackMove(
+      {
+        ...context(CapturableKingPosition.fromFen()),
+        aggregation: "posterior-expected",
+      },
+      drawbackMaterialEvaluator,
+      { maxDepth: 1, maxNodes: 5_000 },
+    );
+
+    expect(result.aggregation).toBe("posterior-expected");
+    expect(result.completedDepth).toBe(1);
+    expect(result.truncated).toBe(false);
+  });
+
   it("rejects a coordinator root-mask mismatch before sampling", async () => {
     let samples = 0;
     await expect(
@@ -219,33 +234,42 @@ describe("iterative player-private drawback search", () => {
     if (root === undefined) {
       throw new Error("Expected h1-h2 to be authority-legal.");
     }
-    let leafEvaluations = 0;
-    const input: PlayerPrivateSearchInput = {
-      ...context(position),
-      evaluator: {
-        id: "terminal-priority-test",
-        evaluate() {
-          leafEvaluations += 1;
-          return Promise.resolve(0);
+    for (
+      const aggregation of [
+        "worst-case",
+        "posterior-expected",
+      ] as const
+    ) {
+      let leafEvaluations = 0;
+      const input: PlayerPrivateSearchInput = {
+        ...context(position),
+        aggregation,
+        evaluator: {
+          id: "terminal-priority-test",
+          evaluate() {
+            leafEvaluations += 1;
+            return Promise.resolve(0);
+          },
         },
-      },
-      limits: { depth: 2, maxNodes: 2 },
-    };
+        limits: { depth: 2, maxNodes: 2 },
+      };
 
-    const result = await searchPlayerPrivateDrawbackRootMove(input, root);
+      const result = await searchPlayerPrivateDrawbackRootMove(input, root);
 
-    expect(result.score).toBeLessThan(-900_000);
-    expect(result.principalVariation).toEqual([
-      root,
-      expect.objectContaining({
-        from: "e2",
-        to: "e1",
-        captured: "king",
-      }),
-    ]);
-    expect(result.knowledgeMode).toBe("player-private");
-    expect(result.depth).toBe(2);
-    expect(leafEvaluations).toBe(0);
+      expect(result.score).toBeLessThan(-900_000);
+      expect(result.principalVariation).toEqual([
+        root,
+        expect.objectContaining({
+          from: "e2",
+          to: "e1",
+          captured: "king",
+        }),
+      ]);
+      expect(result.knowledgeMode).toBe("player-private");
+      expect(result.aggregation).toBe(aggregation);
+      expect(result.depth).toBe(2);
+      expect(leafEvaluations).toBe(0);
+    }
   });
 
   it("rejects a requested root outside the exact own-rule legal mask", async () => {

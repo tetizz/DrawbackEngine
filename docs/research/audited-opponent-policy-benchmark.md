@@ -69,7 +69,7 @@ Result:
 - equal oracle scores: 30;
 - mean audited-minus-unrestricted oracle score: 0 centipawns.
 
-## Decision
+## First-stage decision
 
 The policy is accepted as exact symbolic-elimination infrastructure, not as a
 demonstrated playing-strength improvement. The neutral result is expected from
@@ -80,3 +80,59 @@ The next search milestone is an explicit probability-aware aggregation mode.
 It must preserve worst-case as a configurable safety control, bind the chosen
 mode into trace provenance, and be evaluated on fresh validation positions
 before becoming a default.
+
+## Posterior-expected promotion gate
+
+The next implementation added an explicit `posterior-expected` mode. At every
+opponent node, each surviving hypothesis independently selects its
+lowest-valued legal reply. The node score is the posterior-weighted mean of
+those world-specific minima. A world in which the opponent has already lost
+at the start of turn, or has an empty exact legal mask, contributes a terminal
+root win instead of being dropped. Observable reply branches still condition
+the child posterior by hard legality, so eliminated hypotheses cannot return.
+
+The comparison is reproducible with:
+
+```bash
+pnpm benchmark:posterior -- \
+  ../DrawbackTrainingData/capturable-v2-validation-100.ndjson \
+  30 30 8 2 10000
+```
+
+This used games 30 through 59 at ply eight, which are different public
+positions from the earlier ply-six sample. It compared `worst-case` and
+`posterior-expected` over the same audited posterior, then scored both selected
+moves with the true hidden-rule omniscient search at identical depth and node
+limits. All 30 positions were White to move because the sampled ply was even;
+that narrow coverage is sufficient to reject a losing promotion candidate,
+not to estimate overall playing strength. The sealed final test corpus was not
+used.
+
+Result:
+
+- complete positions: 30/30;
+- truncated positions: 0;
+- surviving posterior particles: 8 to 11;
+- different selected moves: 1/30;
+- posterior-expected oracle wins: 0;
+- worst-case oracle wins: 1;
+- equal oracle scores on changed moves: 0;
+- mean posterior-expected-minus-worst-case oracle score: -10.67 centipawns.
+
+On game 45, `worst-case` chose `a2a3`, while `posterior-expected` chose
+`b5c7`. The exact true-rule oracle scored them at +100 and -220 centipawns,
+respectively. The 320-centipawn loss came from treating probability mass on
+opponent start-of-turn-loss worlds as expected reward even though the true
+world was not one of those terminal cases.
+
+## Current decision
+
+The probability-aware implementation is accepted as a tested experimental
+search mode, but it is rejected as the production profile default.
+`audited-opponent-v1` explicitly remains `worst-case`.
+
+The next strength experiment should be risk-sensitive rather than a raw mean:
+for example, a configurable lower-tail/CVaR score or a worst-case safety floor
+with posterior expectation used only as a tie-break. It must use this same
+fresh-position true-rule oracle gate and must not be promoted on a neutral or
+negative result.

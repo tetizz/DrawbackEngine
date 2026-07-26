@@ -45,7 +45,7 @@ export interface IterativePlayerPrivateSearchResult {
   readonly rootColor: PlayerColor;
   readonly evaluatorId: string;
   readonly knowledgeMode: "player-private";
-  readonly aggregation: "worst-case";
+  readonly aggregation: PlayerPrivateSearchInput["aggregation"];
   readonly opponentHypothesisCount: number;
   readonly requestedDepth: number;
   readonly completedDepth: number;
@@ -189,7 +189,7 @@ export async function searchIterativePlayerPrivateDrawbackMove(
     rootColor: completed.rootColor,
     evaluatorId: evaluator.id,
     knowledgeMode: "player-private",
-    aggregation: "worst-case",
+    aggregation: input.aggregation,
     opponentHypothesisCount: input.opponent.length,
     requestedDepth: limits.maxDepth,
     completedDepth,

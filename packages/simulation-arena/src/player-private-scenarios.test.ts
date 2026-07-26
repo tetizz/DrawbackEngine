@@ -51,6 +51,7 @@ describe("player-private diagnostic scenarios", () => {
     )).toBe(KING_CAPTURE_DIAGNOSTIC_PROFILE);
     expect(AUDITED_OPPONENT_PROFILE).toMatchObject({
       id: "audited-opponent-v1",
+      opponentAggregation: "worst-case",
       opponentHypotheses: {
         kind: "audited-uniform",
         version: 1,

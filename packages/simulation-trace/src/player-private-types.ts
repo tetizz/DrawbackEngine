@@ -28,6 +28,13 @@ export interface TracePlayerPrivateSearchPolicy {
   readonly maxNodes: number;
   readonly leafCacheEntries: number;
   readonly leafCacheHistoryMode: "full" | "ignore";
+  /**
+   * Absent only on historical schema-v1 traces, which used worst-case.
+   * New producers always materialize the aggregation mode.
+   */
+  readonly opponentAggregation?:
+    | "worst-case"
+    | "posterior-expected";
   readonly temperatureCp: number;
   readonly topK: number | null;
 }

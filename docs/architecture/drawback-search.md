@@ -100,19 +100,32 @@ normal training input, or a live-game helper.
 3. the public predictor distribution for the opponent;
 4. one independently cloned runtime per surviving opponent hypothesis.
 
-The initial aggregation is explicit worst case: opponent nodes take the union
-of replies permitted by any positive-mass public hypothesis, merge identical
-observable replies, remove incompatible hypotheses, and normalize the
-remaining public mass. The API cannot accept a `DrawbackGameSession`; it
-accepts only a complete public board snapshot, an opaque own-rule capability,
-and public opponent hypothesis capabilities. Own and opponent capabilities
-carry distinct module-private runtime brands and are bound to one exact public
-position. Opponent capabilities are reconstructed from a public candidate
-rule, candidate parameters, and public history; their factory accepts neither
-a game session nor authoritative internal state. Structurally forged or stale
+Aggregation is explicit and has two modes:
+
+- `worst-case` takes the union of replies permitted by any positive-mass
+  hypothesis and minimizes over that union. This remains the production
+  safety policy.
+- `posterior-expected` treats every hypothesis as a private-rule world. The
+  opponent minimizes over the replies legal in that world, and the root
+  averages those world-specific minima by public posterior mass. Start-of-turn
+  loss and empty-mask worlds contribute terminal score rather than
+  disappearing. Each observable reply is searched once, and its child
+  posterior is conditioned by exact legality.
+
+Expected-value opponent nodes use full child windows because ordinary
+alpha-beta bounds are unsound for a weighted sum of independently minimizing
+worlds. The principal variation is explanatory: it follows the reply selected
+by the greatest posterior mass, with a stable coordinate tie-break.
+
+The API cannot accept a `DrawbackGameSession`; it accepts only a complete
+public board snapshot, an opaque own-rule capability, and public opponent
+hypothesis capabilities. Own and opponent capabilities carry distinct
+module-private runtime brands and are bound to one exact public position.
+Opponent capabilities are reconstructed from a public candidate rule,
+candidate parameters, and public history; their factory accepts neither a game
+session nor authoritative internal state. Structurally forged or stale
 capabilities are rejected. Literal and castling-en-passant king captures are
-terminal in this tree. Expected-policy and risk-sensitive aggregation remain
-deferred until a calibrated public reply policy exists.
+terminal in this tree.
 
 ## Determinism and limits
 
@@ -163,9 +176,12 @@ Before every turn, each candidate runtime is reconstructed solely from the
 authenticated public replay. A candidate that had already lost or forbids an
 observed move is symbolically eliminated, and the remaining mass is
 renormalized. Authority-replay or final-position divergence still aborts
-generation instead of being mistaken for evidence. This is a public-only,
-worst-case opponent model; it does not read either true opponent secrets or a
-learned posterior.
+generation instead of being mistaken for evidence. This is a public-only
+opponent model; it does not read either true opponent secrets or a learned
+posterior. Its named production profile explicitly keeps `worst-case`. The
+probability-aware mode is available for controlled research but is not the
+default because its first fresh validation-position comparison was worse on
+the only changed move.
 
 Player-private results are privileged engine records. They retain initial and
 final secret snapshots for both colors so a game ending before one side moves

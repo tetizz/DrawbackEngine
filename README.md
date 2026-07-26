@@ -156,7 +156,11 @@ pnpm --filter @drawbackengine/cli player-private:batch -- \
 
 This model starts with equal mass per audited drawback label, reconstructs
 state from public moves, eliminates impossible hypotheses exactly, and never
-reads the opponent's true rule, parameters, or state.
+reads the opponent's true rule, parameters, or state. It deliberately retains
+the `worst-case` aggregation safety policy. The separate
+`posterior-expected` research mode is available through the search and worker
+APIs, but it was not promoted after its first held-out validation comparison
+lost 320 centipawns on the only position where it changed the selected move.
 
 Ask the exact drawback-aware search for a move:
 
