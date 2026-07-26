@@ -15,8 +15,13 @@ export async function retryParallelWorkerOperation<T>(
       lastError = error;
     }
   }
+  const lastMessage =
+    lastError instanceof Error
+      ? lastError.message
+      : "Unknown parallel worker failure.";
   throw new Error(
-    `Parallel simulation worker failed after ${String(attempts)} attempts.`,
+    `Parallel simulation worker failed after ${String(attempts)} attempts: `
+      + lastMessage,
     { cause: lastError },
   );
 }

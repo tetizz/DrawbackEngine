@@ -25,29 +25,40 @@ async function run(
   const agent = createAgent(request.policy);
   const games: PlayerPrivateWorkerResponse["games"][number][] = [];
   for (const { gameIndex, assignment } of request.assignedGames) {
-    games.push({
-      gameIndex,
-      result: await simulatePlayerPrivateGame({
-        seed: assignment.seed,
-        parameterSeeds: assignment.parameterSeeds,
-        rules: {
-          white: resolvePlayerPrivateRule(assignment.whiteRuleId),
-          black: resolvePlayerPrivateRule(assignment.blackRuleId),
-        },
-        whiteAgent: agent,
-        blackAgent: agent,
-        opponentHypotheses:
-          request.policy.opponentHypotheses.kind === "audited-uniform"
-            ? auditedUniformOpponentHypotheses
-            : unrestrictedOpponentHypotheses,
-        ...(assignment.initialFen === undefined
-          ? {}
-          : { fen: assignment.initialFen }),
-        ...(request.maxPlies === undefined
-          ? {}
-          : { maxPlies: request.maxPlies }),
-      }),
-    });
+    try {
+      games.push({
+        gameIndex,
+        result: await simulatePlayerPrivateGame({
+          seed: assignment.seed,
+          parameterSeeds: assignment.parameterSeeds,
+          rules: {
+            white: resolvePlayerPrivateRule(assignment.whiteRuleId),
+            black: resolvePlayerPrivateRule(assignment.blackRuleId),
+          },
+          whiteAgent: agent,
+          blackAgent: agent,
+          opponentHypotheses:
+            request.policy.opponentHypotheses.kind === "audited-uniform"
+              ? auditedUniformOpponentHypotheses
+              : unrestrictedOpponentHypotheses,
+          ...(assignment.initialFen === undefined
+            ? {}
+            : { fen: assignment.initialFen }),
+          ...(request.maxPlies === undefined
+            ? {}
+            : { maxPlies: request.maxPlies }),
+        }),
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Unknown game failure.";
+      throw new Error(
+        `Assignment ${String(gameIndex)} `
+          + `(${assignment.whiteRuleId} vs ${assignment.blackRuleId}) `
+          + `failed: ${message}`,
+        { cause: error },
+      );
+    }
   }
   return Object.freeze({
     schemaVersion: 1,

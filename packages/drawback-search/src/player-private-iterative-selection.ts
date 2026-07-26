@@ -68,8 +68,14 @@ function assertExactRootSet(
     scoredIds.length !== expectedIds.length
     || scoredIds.some((id, index) => id !== expectedIds[index])
   ) {
+    const scoredSet = new Set(scoredIds);
+    const expectedSet = new Set(expectedIds);
+    const missing = expectedIds.filter((id) => !scoredSet.has(id));
+    const unexpected = scoredIds.filter((id) => !expectedSet.has(id));
     throw new Error(
-      "Player-private search roots do not equal the coordinator legal mask.",
+      "Player-private search roots do not equal the coordinator legal mask. "
+        + `Missing: ${missing.join(",") || "none"}. `
+        + `Unexpected: ${unexpected.join(",") || "none"}.`,
     );
   }
 }

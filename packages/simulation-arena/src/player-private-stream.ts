@@ -79,12 +79,31 @@ async function* streamWindows(
     if (window.length === 0) {
       return;
     }
-    const results = await simulatePlayerPrivateAssignmentsParallel({
-      assignments: window.map(({ assignment }) => assignment),
-      workers,
-      policy,
-      ...(maxPlies === undefined ? {} : { maxPlies }),
-    });
+    let results: readonly PlayerPrivateSimulationResult[];
+    try {
+      results = await simulatePlayerPrivateAssignmentsParallel({
+        assignments: window.map(({ assignment }) => assignment),
+        workers,
+        policy,
+        ...(maxPlies === undefined ? {} : { maxPlies }),
+      });
+    } catch (error: unknown) {
+      const first = window[0];
+      const last = window.at(-1);
+      if (first === undefined || last === undefined) {
+        throw new Error(
+          "Player-private stream lost its non-empty window.",
+          { cause: error },
+        );
+      }
+      const message =
+        error instanceof Error ? error.message : "Unknown worker failure.";
+      throw new Error(
+        `Player-private stream window ${String(first.globalIndex)}-`
+          + `${String(last.globalIndex)} failed: ${message}`,
+        { cause: error },
+      );
+    }
     if (results.length !== window.length) {
       throw new Error("Player-private stream window returned incomplete results.");
     }

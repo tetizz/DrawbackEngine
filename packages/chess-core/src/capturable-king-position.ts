@@ -155,7 +155,13 @@ export class CapturableKingPosition {
   }
 
   public get fen(): string {
-    return makeFen(this.#position.toSetup());
+    return makeFen({
+      ...this.#position.toSetup(),
+      // chessops intentionally serializes only orthodox-legal en passant.
+      // Capturable-king uses pseudo-legal movement after an orthodox line has
+      // diverged, so the raw target remains public move-authority state.
+      epSquare: this.#position.epSquare,
+    });
   }
 
   public get turn(): PlayerColor {

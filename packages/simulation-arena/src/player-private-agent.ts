@@ -1,9 +1,13 @@
-import type { PublicGameTrace } from "@drawbackengine/chess-core";
+import {
+  publicGameTraceView,
+  type PublicGameTrace,
+} from "@drawbackengine/chess-core";
 import type { ChessMove } from "@drawbackengine/drawback-engine";
 import {
   DEFAULT_PLAYER_PRIVATE_LEAF_CACHE_ENTRIES,
   selectIterativePlayerPrivateDrawbackMove,
   type DrawbackLeafEvaluator,
+  type IterativePlayerPrivateMoveSelection,
   type IterativePlayerPrivateSearchLimits,
   type OwnPlayerRuleCapability,
   type PlayerPrivateOpponentAggregation,
@@ -138,19 +142,31 @@ export function createPlayerPrivateSearchAgent(
       view: PlayerPrivateAgentView,
       rng: RandomSource,
     ) {
-      const selected = await selectIterativePlayerPrivateDrawbackMove(
-        {
-          trace: view.trace,
-          own: view.own,
-          opponent: view.opponent,
-          aggregation: opponentAggregation,
-        },
-        evaluator,
-        limits,
-        rng,
-        temperature,
-        view.legalMoves,
-      );
+      let selected: IterativePlayerPrivateMoveSelection;
+      try {
+        selected = await selectIterativePlayerPrivateDrawbackMove(
+          {
+            trace: view.trace,
+            own: view.own,
+            opponent: view.opponent,
+            aggregation: opponentAggregation,
+          },
+          evaluator,
+          limits,
+          rng,
+          temperature,
+          view.legalMoves,
+        );
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Unknown search failure.";
+        throw new Error(
+          `Player-private search failed at ply ${String(view.ply)} `
+            + `for ${view.color} in ${publicGameTraceView(view.trace).fen}: `
+            + message,
+          { cause: error },
+        );
+      }
       const exactMove = view.legalMoves.find((move: ChessMove) =>
         sameMove(move, selected.move)
       );

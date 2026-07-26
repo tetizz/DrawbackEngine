@@ -430,6 +430,51 @@ describe("player-private capturable-king simulation", () => {
       second.drawbackSecrets.initial,
     );
   });
+
+  it("replays a non-orthodox en-passant corpus regression", async () => {
+    const corpusAgent = createPlayerPrivateSearchAgent({
+      id: "corpus-en-passant-regression",
+      evaluator: drawbackMaterialEvaluator,
+      limits: {
+        maxDepth: 1,
+        maxNodes: 5_000,
+        leafCacheEntries: 16_384,
+        leafCacheHistoryMode: "full",
+      },
+      temperature: {
+        temperatureCp: 35,
+        topK: 8,
+      },
+    });
+    const game = await simulatePlayerPrivateGame({
+      seed: 1_504_459_138,
+      parameterSeeds: {
+        white: 1_014_030_545,
+        black: 1_519_288_646,
+      },
+      maxPlies: 60,
+      rules: {
+        white: resolvePlayerPrivateRule("spice-of-life"),
+        black: resolvePlayerPrivateRule("true-gentleman"),
+      },
+      whiteAgent: corpusAgent,
+      blackAgent: corpusAgent,
+    });
+
+    expect(game.plies).toHaveLength(39);
+    expect(game.plies[37]?.observation.fenBefore).toBe(
+      "3Qkbnr/1b3ppp/2p5/1p2p3/3Pp3/2P5/5PPP/3K1BNR b k d3 0 19",
+    );
+    expect(game.plies[37]?.observation.authorityLegalMoves).toContainEqual(
+      expect.objectContaining({ from: "e4", to: "d3" }),
+    );
+    expect(game.result).toEqual({
+      kind: "king-capture",
+      winner: "white",
+      capturedKing: "black",
+      method: "direct",
+    });
+  });
 });
 
 function requiredMove(

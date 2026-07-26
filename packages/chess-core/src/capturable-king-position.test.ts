@@ -12,6 +12,24 @@ function hasMove(
 }
 
 describe("CapturableKingPosition", () => {
+  it("preserves pseudo-legal en passant through a non-orthodox snapshot", () => {
+    const position = CapturableKingPosition.fromFen(
+      "3Qkbnr/1b3ppp/2p5/1p2p3/4p3/2P5/3P1PPP/3K1BNR w k - 0 19",
+    );
+
+    expect(position.move({ from: "d2", to: "d4" })).not.toBeNull();
+    expect(position.fen).toBe(
+      "3Qkbnr/1b3ppp/2p5/1p2p3/3Pp3/2P5/5PPP/3K1BNR b k d3 0 19",
+    );
+    expect(hasMove(position, "e4", "d3")).toBe(true);
+
+    const restored = CapturableKingPosition.fromSnapshot(
+      position.snapshot(),
+    );
+    expect(restored.fen).toBe(position.fen);
+    expect(hasMove(restored, "e4", "d3")).toBe(true);
+  });
+
   it("allows check to be ignored, pinned pieces to move, and kings to enter attack", () => {
     const pinned = CapturableKingPosition.fromFen(
       "4r2k/8/8/8/8/8/4R3/4K3 w - - 0 1",

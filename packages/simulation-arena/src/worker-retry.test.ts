@@ -31,6 +31,9 @@ describe("parallel worker retry", () => {
     ).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("after 3 attempts");
+    expect((failure as Error).message).toContain(
+      "worker still unavailable",
+    );
     expect((failure as Error).cause).toBe(finalError);
     expect(operation).toHaveBeenCalledTimes(3);
   });
