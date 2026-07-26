@@ -22,6 +22,7 @@ import type {
 const OPPONENT_AGGREGATIONS: ReadonlySet<string> = new Set([
   "worst-case",
   "posterior-expected",
+  "posterior-cvar-25",
 ]);
 
 export interface PlayerPrivateAgentView {
@@ -114,7 +115,8 @@ export function createPlayerPrivateSearchAgent(
     options.opponentAggregation ?? "worst-case";
   if (!OPPONENT_AGGREGATIONS.has(opponentAggregation)) {
     throw new RangeError(
-      "Opponent aggregation must be worst-case or posterior-expected.",
+      "Opponent aggregation must be worst-case, posterior-expected, "
+        + "or posterior-cvar-25.",
     );
   }
   validateSnapshottedOptions(evaluator.id, limits, temperature);

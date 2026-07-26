@@ -246,9 +246,11 @@ export function assertPlayerPrivateSearchPolicy(value: unknown): void {
     if (
       policy["opponentAggregation"] !== "worst-case"
       && policy["opponentAggregation"] !== "posterior-expected"
+      && policy["opponentAggregation"] !== "posterior-cvar-25"
     ) {
       throw new TypeError(
-        "opponentAggregation must be worst-case or posterior-expected.",
+        "opponentAggregation must be worst-case, posterior-expected, "
+          + "or posterior-cvar-25.",
       );
     }
   }

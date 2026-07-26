@@ -37,7 +37,8 @@ export interface TracePlayerPrivateSearchPolicy {
    */
   readonly opponentAggregation?:
     | "worst-case"
-    | "posterior-expected";
+    | "posterior-expected"
+    | "posterior-cvar-25";
   readonly temperatureCp: number;
   readonly topK: number | null;
 }

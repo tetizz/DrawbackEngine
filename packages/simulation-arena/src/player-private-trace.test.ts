@@ -251,6 +251,27 @@ describe("player-private simulation trace", () => {
         agents: historical.agents,
       })
     ).toThrow("must materialize opponentAggregation");
+    const cvarTrace = {
+      ...trace,
+      agents: {
+        white: {
+          ...trace.agents.white,
+          searchPolicy: {
+            ...trace.agents.white.searchPolicy,
+            opponentAggregation: "posterior-cvar-25" as const,
+          },
+        },
+        black: {
+          ...trace.agents.black,
+          searchPolicy: {
+            ...trace.agents.black.searchPolicy,
+            opponentAggregation: "posterior-cvar-25" as const,
+          },
+        },
+      },
+    };
+    expect(parsePlayerPrivateSimulationTraceRecord(cvarTrace))
+      .toEqual(cvarTrace);
     expect(() =>
       parsePlayerPrivateSimulationTraceRecord({
         ...trace,

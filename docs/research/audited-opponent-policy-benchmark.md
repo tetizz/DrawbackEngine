@@ -98,7 +98,7 @@ the child posterior by hard legality, so eliminated hypotheses cannot return.
 The comparison is reproducible with:
 
 ```bash
-pnpm benchmark:posterior -- \
+pnpm benchmark:posterior \
   ../DrawbackTrainingData/capturable-v2-validation-100.ndjson \
   30 30 8 2 10000
 ```
@@ -129,14 +129,41 @@ respectively. The 320-centipawn loss came from treating probability mass on
 opponent start-of-turn-loss worlds as expected reward even though the true
 world was not one of those terminal cases.
 
-## Current decision
+## Posterior-expected decision
 
 The probability-aware implementation is accepted as a tested experimental
 search mode, but it is rejected as the production profile default.
 `audited-opponent-v1` explicitly remains `worst-case`.
 
-The next strength experiment should be risk-sensitive rather than a raw mean:
+The next planned strength experiment was risk-sensitive rather than a raw mean:
 for example, a configurable lower-tail/CVaR score or a worst-case safety floor
 with posterior expectation used only as a tie-break. It must use this same
 fresh-position true-rule oracle gate and must not be promoted on a neutral or
 negative result.
+
+## Historical replay limitation
+
+The command above reproduces the comparison at the source revision that
+created `capturable-v2-validation-100.ndjson`. At current revision
+`74eb6fc95571994bd96b7a351278f3f74f0972e3`, the stricter semantic parser
+rejects that historical file because its first serialized `positionAfter`
+snapshot no longer matches exact replay. The historical numbers remain useful
+as a recorded rejection, but they are not current-revision evidence.
+
+The successor protocol therefore uses the authenticated current-catalog
+`capturable25-v3-balanced-validation-trace.ndjson` corpus and records its
+SHA-256 in
+`docs/research/posterior-cvar-25-validation-protocol.md`. It does not weaken
+the parser to regain compatibility with stale privileged traces.
+
+## Lower-tail successor result
+
+The preregistered `posterior-cvar-25` successor averaged the worst 25% of
+posterior world outcomes. Its implementation and provenance tests passed, and
+all 60 frozen selection searches and exact hidden-rule oracle searches
+completed without truncation. It changed no root move for either color.
+
+That neutral result fails the frozen promotion gate, which required at least
+one strict oracle improvement and a positive aggregate delta. The confirmation
+slice was not opened. Both posterior modes remain explicit research options,
+while `audited-opponent-v1` continues to use `worst-case`.

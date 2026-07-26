@@ -24,7 +24,14 @@ import {
 import {
   parsePlayerPrivateSimulationTraceRecord,
 } from "../packages/simulation-trace/dist/index.js";
+import {
+  createPosteriorBenchmarkReport,
+} from "./posterior-benchmark-report.mjs";
 
+const argumentsWithoutCommand = process.argv.slice(2);
+if (argumentsWithoutCommand[0] === "--") {
+  argumentsWithoutCommand.shift();
+}
 const [
   inputArgument,
   startArgument = "30",
@@ -127,19 +134,29 @@ for (const record of records) {
     ...common,
     aggregation: "posterior-expected",
   });
-  const worstCaseOracle = await searchOmniscientDrawbackRootMove(
-    session,
-    worstCase.move,
-    drawbackMaterialEvaluator,
-    { depth, maxNodes },
-  );
-  const posteriorExpectedOracle =
-    await searchOmniscientDrawbackRootMove(
+  const posteriorCvar = await searchPlayerPrivateDrawbackMove({
+    ...common,
+    aggregation: "posterior-cvar-25",
+  });
+  const oracleByMove = new Map();
+  const oracleFor = async (move) => {
+    const id = moveId(move);
+    const cached = oracleByMove.get(id);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = await searchOmniscientDrawbackRootMove(
       session,
-      posteriorExpected.move,
+      move,
       drawbackMaterialEvaluator,
       { depth, maxNodes },
     );
+    oracleByMove.set(id, result);
+    return result;
+  };
+  const worstCaseOracle = await oracleFor(worstCase.move);
+  const posteriorExpectedOracle = await oracleFor(posteriorExpected.move);
+  const posteriorCvarOracle = await oracleFor(posteriorCvar.move);
   comparisons.push({
     gameIndex: record.gameIndex,
     ply: targetPly,
@@ -147,15 +164,20 @@ for (const record of records) {
     hypothesisCount: opponent.length,
     worstCaseMove: moveId(worstCase.move),
     posteriorExpectedMove: moveId(posteriorExpected.move),
+    posteriorCvar25Move: moveId(posteriorCvar.move),
     worstCaseSearchScore: worstCase.score,
     posteriorExpectedSearchScore: posteriorExpected.score,
+    posteriorCvar25SearchScore: posteriorCvar.score,
     worstCaseOracleScore: worstCaseOracle.score,
     posteriorExpectedOracleScore: posteriorExpectedOracle.score,
+    posteriorCvar25OracleScore: posteriorCvarOracle.score,
     truncated:
       worstCase.truncated
       || posteriorExpected.truncated
+      || posteriorCvar.truncated
       || worstCaseOracle.truncated
-      || posteriorExpectedOracle.truncated,
+      || posteriorExpectedOracle.truncated
+      || posteriorCvarOracle.truncated,
   });
   console.error(
     `benchmarked game ${String(record.gameIndex)} at ply `
@@ -163,47 +185,15 @@ for (const record of records) {
   );
 }
 
-const complete = comparisons.filter(({ truncated }) => !truncated);
-const differing = complete.filter(
-  ({ worstCaseMove, posteriorExpectedMove }) =>
-    worstCaseMove !== posteriorExpectedMove,
-);
-const expectedWins = differing.filter(
-  ({ worstCaseOracleScore, posteriorExpectedOracleScore }) =>
-    posteriorExpectedOracleScore > worstCaseOracleScore,
-);
-const worstCaseWins = differing.filter(
-  ({ worstCaseOracleScore, posteriorExpectedOracleScore }) =>
-    posteriorExpectedOracleScore < worstCaseOracleScore,
-);
-const equal = differing.length - expectedWins.length - worstCaseWins.length;
-const meanDelta =
-  complete.length === 0
-    ? null
-    : complete.reduce(
-        (
-          total,
-          { worstCaseOracleScore, posteriorExpectedOracleScore },
-        ) => total + posteriorExpectedOracleScore - worstCaseOracleScore,
-        0,
-      ) / complete.length;
-
-console.log(JSON.stringify({
+console.log(JSON.stringify(createPosteriorBenchmarkReport({
   inputPath,
   startGameIndex,
   count,
   targetPly,
   depth,
   maxNodes,
-  completePositions: complete.length,
-  truncatedPositions: comparisons.length - complete.length,
-  differingMoves: differing.length,
-  posteriorExpectedOracleWins: expectedWins.length,
-  worstCaseOracleWins: worstCaseWins.length,
-  equalOracleScoresOnDifferingMoves: equal,
-  meanPosteriorExpectedMinusWorstCaseOracleCp: meanDelta,
   comparisons,
-}, null, 2));
+}), null, 2));
 
 function reconstructPosition(record, target) {
   const rules = {

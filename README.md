@@ -167,6 +167,11 @@ the `worst-case` aggregation safety policy. The separate
 `posterior-expected` research mode is available through the search and worker
 APIs, but it was not promoted after its first held-out validation comparison
 lost 320 centipawns on the only position where it changed the selected move.
+`posterior-cvar-25` is a second experimental mode that averages only the
+worst posterior quartile. It passed its correctness and completion checks but
+changed no move in its frozen 60-position selection benchmark, so the
+preregistered gate rejected it as neutral. The production profile remains
+`worst-case`.
 
 Ask the exact drawback-aware search for a move:
 

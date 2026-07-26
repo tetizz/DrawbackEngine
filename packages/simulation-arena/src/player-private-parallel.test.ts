@@ -81,7 +81,7 @@ describe("parallel player-private simulation", () => {
       const auditedPolicy: PlayerPrivateSearchPolicy = {
         ...policy,
         policyId: "audited-opponent-worker-test",
-        opponentAggregation: "posterior-expected",
+        opponentAggregation: "posterior-cvar-25",
         opponentHypotheses: {
           kind: "audited-uniform",
           version: 1,
@@ -99,7 +99,7 @@ describe("parallel player-private simulation", () => {
         "audited-opponent-worker-test",
       );
       expect(result?.agents.white.searchPolicy?.opponentAggregation).toBe(
-        "posterior-expected",
+        "posterior-cvar-25",
       );
     },
     30_000,

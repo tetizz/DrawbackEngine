@@ -29,12 +29,15 @@ const AUTHORITY_ID = "capturable-king/v1";
 
 export type PlayerPrivateOpponentAggregation =
   | "worst-case"
-  | "posterior-expected";
+  | "posterior-expected"
+  | "posterior-cvar-25";
 
 const PLAYER_PRIVATE_AGGREGATIONS: ReadonlySet<string> = new Set([
   "worst-case",
   "posterior-expected",
+  "posterior-cvar-25",
 ]);
+const POSTERIOR_CVAR_TAIL_MASS = 0.25;
 
 const CAPTURE_VALUE: Readonly<
   Record<NonNullable<ChessMove["captured"]>, number>
@@ -316,9 +319,9 @@ async function searchNode(
   const ownTurn = node.position.turn === state.rootColor;
   if (
     !ownTurn
-    && state.aggregation === "posterior-expected"
+    && state.aggregation !== "worst-case"
   ) {
-    return searchPosteriorExpectedOpponentNode(
+    return searchPosteriorOpponentNode(
       node,
       expansion,
       depth,
@@ -465,19 +468,20 @@ function expandTurn(
 }
 
 /**
- * Computes Bayes-risk search at an opponent node.
+ * Computes posterior-risk search at an opponent node.
  *
  * Each hypothesis is a possible private-rule world. In that world the
- * opponent knows its rule and chooses its lowest-valued legal reply. The root
- * player averages those world-specific minima by the public posterior. Each
- * reply branch is searched once and conditions its child posterior by exact
- * legality, so contradicted worlds never reappear.
+ * opponent knows its rule and chooses its lowest-valued legal reply. The
+ * selected policy combines those world-specific minima by posterior
+ * expectation or lower-tail CVaR. Each reply branch is searched once and
+ * conditions its child posterior by exact legality, so contradicted worlds
+ * never reappear.
  *
- * Expected-value nodes deliberately use full child windows: ordinary
- * alpha-beta bounds are unsound across a weighted sum of independently
- * minimizing worlds.
+ * Posterior-risk nodes deliberately use full child windows: ordinary
+ * alpha-beta bounds are unsound across weighted or lower-tail combinations
+ * of independently minimizing worlds.
  */
-async function searchPosteriorExpectedOpponentNode(
+async function searchPosteriorOpponentNode(
   node: PrivateNode,
   expansion: TurnExpansion,
   depth: number,
@@ -499,27 +503,32 @@ async function searchPosteriorExpectedOpponentNode(
     evaluated.set(moveId(branch.move), { branch, result });
   }
 
-  let score = 0;
-  const representativeMass = new Map<string, number>();
+  const outcomes: WorldScoreOutcome[] = [];
   for (const world of worlds) {
     if (world.terminalScore !== null) {
-      score += world.probability * world.terminalScore;
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
       continue;
     }
     const selected = minimumWorldReply(world, evaluated);
-    score += world.probability * selected.result.score;
-    const id = moveId(selected.branch.move);
-    representativeMass.set(
-      id,
-      (representativeMass.get(id) ?? 0) + world.probability,
-    );
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: selected.result.score,
+      replyId: moveId(selected.branch.move),
+    });
   }
-  const representative = representativeExpectedReply(
-    representativeMass,
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const representative = representativePosteriorReply(
+    aggregation.representativeMass,
     evaluated,
   );
   return {
-    score,
+    score: aggregation.score,
     principalVariation:
       representative === null
         ? []
@@ -533,6 +542,96 @@ async function searchPosteriorExpectedOpponentNode(
 interface EvaluatedMoveBranch {
   readonly branch: MoveBranch;
   readonly result: NodeResult;
+}
+
+interface WorldScoreOutcome {
+  readonly hypothesisId: string;
+  readonly probability: number;
+  readonly score: number;
+  readonly replyId: string | null;
+}
+
+interface AggregatedWorldOutcomes {
+  readonly score: number;
+  readonly representativeMass: ReadonlyMap<string, number>;
+}
+
+function aggregateWorldOutcomes(
+  aggregation: PlayerPrivateOpponentAggregation,
+  outcomes: readonly WorldScoreOutcome[],
+): AggregatedWorldOutcomes {
+  const representativeMass = new Map<string, number>();
+  if (aggregation === "worst-case") {
+    throw new Error(
+      "Worst-case search cannot use posterior world aggregation.",
+    );
+  }
+  if (aggregation === "posterior-expected") {
+    let score = 0;
+    for (const outcome of outcomes) {
+      score += outcome.probability * outcome.score;
+      addRepresentativeMass(
+        representativeMass,
+        outcome.replyId,
+        outcome.probability,
+      );
+    }
+    return { score, representativeMass };
+  }
+
+  const ordered = [...outcomes].sort(
+    (left, right) =>
+      left.score - right.score
+      || left.hypothesisId.localeCompare(right.hypothesisId),
+  );
+  let remaining = POSTERIOR_CVAR_TAIL_MASS;
+  let includedMass = 0;
+  let weightedScore = 0;
+  let representativeScore: number | null = null;
+  for (const outcome of ordered) {
+    if (remaining <= Number.EPSILON) {
+      break;
+    }
+    const mass = Math.min(outcome.probability, remaining);
+    weightedScore += mass * outcome.score;
+    includedMass += mass;
+    remaining -= mass;
+    if (outcome.replyId !== null) {
+      if (
+        representativeScore === null
+        || outcome.score < representativeScore
+      ) {
+        representativeMass.clear();
+        representativeScore = outcome.score;
+      }
+      if (outcome.score === representativeScore) {
+        addRepresentativeMass(representativeMass, outcome.replyId, mass);
+      }
+    }
+  }
+  if (
+    includedMass <= 0
+    || includedMass + Number.EPSILON < POSTERIOR_CVAR_TAIL_MASS
+  ) {
+    throw new Error(
+      "Posterior CVaR requires normalized positive hypothesis mass.",
+    );
+  }
+  return {
+    score: weightedScore / includedMass,
+    representativeMass,
+  };
+}
+
+function addRepresentativeMass(
+  mass: Map<string, number>,
+  replyId: string | null,
+  probability: number,
+): void {
+  if (replyId === null) {
+    return;
+  }
+  mass.set(replyId, (mass.get(replyId) ?? 0) + probability);
 }
 
 function minimumWorldReply(
@@ -566,7 +665,7 @@ function minimumWorldReply(
   return selected;
 }
 
-function representativeExpectedReply(
+function representativePosteriorReply(
   mass: ReadonlyMap<string, number>,
   evaluated: ReadonlyMap<string, EvaluatedMoveBranch>,
 ): EvaluatedMoveBranch | null {
@@ -589,7 +688,7 @@ function requiredOpponentWorlds(
 ): readonly OpponentWorldExpansion[] {
   if (expansion.opponentWorlds === undefined) {
     throw new Error(
-      "Posterior-expected opponent search requires world expansions.",
+      "Posterior-risk opponent search requires world expansions.",
     );
   }
   return expansion.opponentWorlds;
@@ -676,9 +775,9 @@ async function evaluateLeaf(
   }
   if (
     node.position.turn !== state.rootColor
-    && state.aggregation === "posterior-expected"
+    && state.aggregation !== "worst-case"
   ) {
-    return evaluatePosteriorExpectedOpponentLeaf(
+    return evaluatePosteriorOpponentLeaf(
       node,
       ply,
       state,
@@ -703,7 +802,7 @@ async function evaluateLeaf(
   };
 }
 
-async function evaluatePosteriorExpectedOpponentLeaf(
+async function evaluatePosteriorOpponentLeaf(
   node: PrivateNode,
   ply: number,
   state: SearchState,
@@ -714,11 +813,15 @@ async function evaluatePosteriorExpectedOpponentLeaf(
     expansion.moves.map((move) => [moveId(move), move] as const),
   );
   const staticScores = new Map<string, number>();
-  const representativeMass = new Map<string, number>();
-  let score = 0;
+  const outcomes: WorldScoreOutcome[] = [];
   for (const world of worlds) {
     if (world.terminalScore !== null) {
-      score += world.probability * world.terminalScore;
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
       continue;
     }
     const captureId = firstKingCaptureId(world, movesById);
@@ -733,16 +836,23 @@ async function evaluatePosteriorExpectedOpponentLeaf(
         );
         staticScores.set(maskId, staticScore);
       }
-      score += world.probability * staticScore;
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: staticScore,
+        replyId: null,
+      });
       continue;
     }
-    score += world.probability * (-TERMINAL_SCORE + ply + 1);
-    representativeMass.set(
-      captureId,
-      (representativeMass.get(captureId) ?? 0) + world.probability,
-    );
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: -TERMINAL_SCORE + ply + 1,
+      replyId: captureId,
+    });
   }
-  const selectedCaptureId = [...representativeMass.entries()].sort(
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const selectedCaptureId = [...aggregation.representativeMass.entries()].sort(
     ([leftId, leftMass], [rightId, rightMass]) =>
       rightMass - leftMass || leftId.localeCompare(rightId),
   )[0]?.[0];
@@ -751,7 +861,7 @@ async function evaluatePosteriorExpectedOpponentLeaf(
       ? undefined
       : movesById.get(selectedCaptureId);
   return {
-    score,
+    score: aggregation.score,
     principalVariation:
       selectedCapture === undefined ? [] : [selectedCapture],
   };
@@ -870,7 +980,8 @@ function validateInput(input: PlayerPrivateSearchInput): void {
   }
   if (!PLAYER_PRIVATE_AGGREGATIONS.has(input.aggregation)) {
     throw new RangeError(
-      "Player-private aggregation must be worst-case or posterior-expected.",
+      "Player-private aggregation must be worst-case, posterior-expected, "
+        + "or posterior-cvar-25.",
     );
   }
   const position = CapturableKingPosition.fromSnapshot(snapshot);

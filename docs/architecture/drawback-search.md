@@ -100,7 +100,7 @@ normal training input, or a live-game helper.
 3. the public predictor distribution for the opponent;
 4. one independently cloned runtime per surviving opponent hypothesis.
 
-Aggregation is explicit and has two modes:
+Aggregation is explicit and has three modes:
 
 - `worst-case` takes the union of replies permitted by any positive-mass
   hypothesis and minimizes over that union. This remains the production
@@ -111,11 +111,18 @@ Aggregation is explicit and has two modes:
   loss and empty-mask worlds contribute terminal score rather than
   disappearing. Each observable reply is searched once, and its child
   posterior is conditioned by exact legality.
+- `posterior-cvar-25` computes the same exact per-world minimum replies, sorts
+  their root-perspective outcomes from worst to best, and averages exactly the
+  worst 25% of posterior mass. A fractional boundary world is included when
+  required. This makes rare severe losses count more heavily without letting
+  one arbitrarily tiny permissive particle dictate every move.
 
-Expected-value opponent nodes use full child windows because ordinary
-alpha-beta bounds are unsound for a weighted sum of independently minimizing
-worlds. The principal variation is explanatory: it follows the reply selected
-by the greatest posterior mass, with a stable coordinate tie-break.
+Posterior opponent nodes use full child windows because ordinary alpha-beta
+bounds are unsound for a weighted or lower-tail combination of independently
+minimizing worlds. The expected-value principal variation follows the reply
+selected by the greatest posterior mass. The CVaR principal variation follows
+the lowest-scoring represented tail reply. Both use a stable coordinate
+tie-break.
 
 The API cannot accept a `DrawbackGameSession`; it accepts only a complete
 public board snapshot, an opaque own-rule capability, and public opponent
@@ -181,9 +188,12 @@ renormalized. Authority-replay or final-position divergence still aborts
 generation instead of being mistaken for evidence. This is a public-only
 opponent model; it does not read either true opponent secrets or a learned
 posterior. Its named production profile explicitly keeps `worst-case`. The
-probability-aware mode is available for controlled research but is not the
-default because its first fresh validation-position comparison was worse on
-the only changed move.
+probability-aware modes are available for controlled research but are not
+selected implicitly. `posterior-expected` is rejected because its first fresh
+validation-position comparison was worse on the only changed move.
+`posterior-cvar-25` remains experimental because it changed no move in its
+frozen 60-position selection benchmark; its confirmation slice was not
+opened.
 
 Player-private results are privileged engine records. They retain initial and
 final secret snapshots for both colors so a game ending before one side moves

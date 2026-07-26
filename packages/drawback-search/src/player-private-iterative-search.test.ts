@@ -161,19 +161,26 @@ describe("iterative player-private drawback search", () => {
     ).toBe(true);
   });
 
-  it("preserves posterior-expected aggregation through iterative search", async () => {
-    const result = await searchIterativePlayerPrivateDrawbackMove(
-      {
-        ...context(CapturableKingPosition.fromFen()),
-        aggregation: "posterior-expected",
-      },
-      drawbackMaterialEvaluator,
-      { maxDepth: 1, maxNodes: 5_000 },
-    );
+  it("preserves posterior aggregation through iterative search", async () => {
+    for (
+      const aggregation of [
+        "posterior-expected",
+        "posterior-cvar-25",
+      ] as const
+    ) {
+      const result = await searchIterativePlayerPrivateDrawbackMove(
+        {
+          ...context(CapturableKingPosition.fromFen()),
+          aggregation,
+        },
+        drawbackMaterialEvaluator,
+        { maxDepth: 1, maxNodes: 5_000 },
+      );
 
-    expect(result.aggregation).toBe("posterior-expected");
-    expect(result.completedDepth).toBe(1);
-    expect(result.truncated).toBe(false);
+      expect(result.aggregation).toBe(aggregation);
+      expect(result.completedDepth).toBe(1);
+      expect(result.truncated).toBe(false);
+    }
   });
 
   it("rejects a coordinator root-mask mismatch before sampling", async () => {
@@ -238,6 +245,7 @@ describe("iterative player-private drawback search", () => {
       const aggregation of [
         "worst-case",
         "posterior-expected",
+        "posterior-cvar-25",
       ] as const
     ) {
       let leafEvaluations = 0;

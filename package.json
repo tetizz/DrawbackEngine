@@ -17,6 +17,7 @@
     "catalog:import-observed": "node scripts/import-observed-catalog.mjs",
     "catalog:verify-evidence": "node scripts/validate-rule-verification-evidence.mjs",
     "benchmark:posterior": "pnpm build && node scripts/benchmark-posterior-aggregation.mjs",
+    "benchmark:posterior:combine": "node scripts/combine-posterior-benchmark-shards.mjs",
     "check:boundaries": "node scripts/check-repository-boundaries.mjs",
     "smoke:packages": "node scripts/smoke-built-packages.mjs",
     "check": "pnpm typecheck && pnpm lint && pnpm catalog:verify-evidence && pnpm check:boundaries && vitest run && pnpm smoke:packages"

@@ -83,7 +83,8 @@ IDs, and starting position. It rejects:
 - an active-player pre-move secret that differs from exact rule state;
 - either side's final secret state when it differs from full-game replay;
 - an agent without complete immutable drawback-search provenance;
-- an aggregation value other than `worst-case` or `posterior-expected`;
+- an aggregation value other than `worst-case`, `posterior-expected`, or
+  `posterior-cvar-25`;
 - an unsupported ruleset, random policy, or opponent-hypothesis policy;
 - a result or limit-stop fact that differs from the session's exact terminal
   precedence.
@@ -157,10 +158,12 @@ The named `audited-opponent-v1` profile uses ordinary starts and the complete
 audited prior. Public replay eliminates exactly contradicted label/parameter
 particles and renormalizes survivors before search. It explicitly retains
 `worst-case` aggregation after `posterior-expected` failed its first
-validation-position promotion gate. The hypothesis source is recorded in
-`hypothesisPolicy`, while aggregation is recorded in each agent search policy.
-Trace schema version 2 is the current producer format; the parser remains
-backward compatible with historical version-1 records as described above.
+validation-position promotion gate. `posterior-cvar-25` is a separately
+versioned lower-tail research policy and is never selected by that production
+profile implicitly. The hypothesis source is recorded in `hypothesisPolicy`,
+while aggregation is recorded in each agent search policy. Trace schema
+version 2 is the current producer format; the parser remains backward
+compatible with historical version-1 records as described above.
 
 `streamPlayerPrivateAssignmentsParallel` retains at most one configured
 assignment window, emits strictly increasing global indexes, and is

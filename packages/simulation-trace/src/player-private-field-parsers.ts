@@ -309,9 +309,11 @@ function searchPolicyAt(
     opponentAggregation !== undefined
     && opponentAggregation !== "worst-case"
     && opponentAggregation !== "posterior-expected"
+    && opponentAggregation !== "posterior-cvar-25"
   ) {
     throw new TypeError(
-      `${path}.opponentAggregation must be worst-case or posterior-expected.`,
+      `${path}.opponentAggregation must be worst-case, posterior-expected, `
+        + "or posterior-cvar-25.",
     );
   }
   const temperatureCp = object.temperatureCp;

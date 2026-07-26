@@ -306,6 +306,128 @@ describe("searchPlayerPrivateDrawbackMove", () => {
     expect(expected.aggregation).toBe("posterior-expected");
   });
 
+  it("uses the worst posterior quartile to reject a low-probability catastrophe", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "4k3/8/8/8/8/8/4q3/4K2R w - - 0 1",
+    );
+    const opponent = [
+      publicHypothesis(
+        "one-percent-king-capture",
+        0.01,
+        "black",
+        unrestrictedRule,
+        position,
+      ),
+      publicHypothesis(
+        "likely-no-king-capture",
+        0.99,
+        "black",
+        noKingCaptureRule,
+        position,
+      ),
+    ];
+    const context = {
+      trace: createPublicGameTrace(position.snapshot()),
+      own: ownCapability("white", unrestrictedRule, position),
+      opponent,
+      evaluator: rewardedRookMoveEvaluator,
+      limits: { depth: 2, maxNodes: 10_000 },
+    };
+
+    const expected = await searchPlayerPrivateDrawbackMove({
+      ...context,
+      aggregation: "posterior-expected",
+    });
+    const cvar = await searchPlayerPrivateDrawbackMove({
+      ...context,
+      aggregation: "posterior-cvar-25",
+    });
+
+    expect(expected.move).toMatchObject({ from: "h1", to: "h2" });
+    expect(cvar.move).not.toMatchObject({ from: "h1", to: "h2" });
+    expect(cvar.aggregation).toBe("posterior-cvar-25");
+  });
+
+  it("computes posterior-cvar-25 from the exact worst-mass boundary", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "4k3/8/8/8/8/8/4q3/4K2R w - - 0 1",
+    );
+    for (const depth of [1, 2]) {
+      const result = await searchPlayerPrivateDrawbackRootMove(
+        {
+          trace: createPublicGameTrace(position.snapshot()),
+          own: ownCapability("white", unrestrictedRule, position),
+          opponent: [
+            publicHypothesis(
+              "king-capture",
+              0.1,
+              "black",
+              unrestrictedRule,
+              position,
+            ),
+            publicHypothesis(
+              "no-king-capture",
+              0.9,
+              "black",
+              noKingCaptureRule,
+              position,
+            ),
+          ],
+          aggregation: "posterior-cvar-25",
+          evaluator: {
+            id: "test-zero/v1",
+            evaluate: () => Promise.resolve(0),
+          },
+          limits: { depth, maxNodes: 10_000 },
+        },
+        { from: "h1", to: "h2" },
+      );
+
+      expect(result.score).toBeCloseTo(-399_999.2, 6);
+      expect(result.principalVariation.slice(0, 2)).toMatchObject([
+        { from: "h1", to: "h2" },
+        { from: "e2", to: "e1", captured: "king" },
+      ]);
+    }
+  });
+
+  it("does not count likely opponent-loss worlds as lower-tail reward", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "4k3/8/8/8/8/8/4q3/4K2R w - - 0 1",
+    );
+    const result = await searchPlayerPrivateDrawbackRootMove(
+      {
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "terminal-world",
+            0.25,
+            "black",
+            alwaysLoseRule,
+            position,
+          ),
+          publicHypothesis(
+            "live-world",
+            0.75,
+            "black",
+            noKingCaptureRule,
+            position,
+          ),
+        ],
+        aggregation: "posterior-cvar-25",
+        evaluator: {
+          id: "test-zero/v1",
+          evaluate: () => Promise.resolve(0),
+        },
+        limits: { depth: 2, maxNodes: 10_000 },
+      },
+      { from: "h1", to: "h2" },
+    );
+
+    expect(result.score).toBe(0);
+  });
+
   it("changes an exact root score when posterior mass is swapped", async () => {
     const position = CapturableKingPosition.fromFen(
       "4k3/8/8/8/8/8/4q3/4K2R w - - 0 1",
