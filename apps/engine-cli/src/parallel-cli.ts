@@ -30,7 +30,10 @@ async function main(): Promise<void> {
     maxPlies: 240,
   });
   mkdirSync(dirname(outputPath), { recursive: true });
-  const stream = createWriteStream(outputPath, { encoding: "utf8" });
+  const stream = createWriteStream(outputPath, {
+    encoding: "utf8",
+    flags: "wx",
+  });
   stream.on("error", (error) => {
     console.error(`Parallel game trace write failed: ${error.message}`);
     process.exitCode = 1;

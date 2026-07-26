@@ -98,6 +98,13 @@ Run a parallel batch:
 pnpm --filter @drawbackengine/cli parallel -- 100 8
 ```
 
+Batch commands write one complete privileged simulation trace per NDJSON line
+and refuse to overwrite an existing file. These traces contain post-game
+labels and secret rule state, so they belong in trusted local storage and are
+never model inputs by themselves. DrawbackGuesser owns the separate,
+leakage-checked per-move training schema; a release corpus must pass that
+consumer contract before training.
+
 Ask the exact drawback-aware search for a move:
 
 ```bash

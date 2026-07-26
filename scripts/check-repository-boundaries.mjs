@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import console from "node:console";
@@ -67,6 +68,30 @@ function extensionOf(path) {
 }
 
 const failures = [];
+const forbiddenTrackedArtifactExtensions = new Set([
+  ".ndjson",
+  ".onnx",
+  ".parquet",
+  ".pt",
+  ".sqlite",
+  ".sqlite3",
+]);
+const trackedPaths = execFileSync("git", ["ls-files", "-z"], {
+  cwd: repositoryRoot,
+  encoding: "utf8",
+}).split("\0").filter((path) => path.length > 0);
+for (const trackedPath of trackedPaths) {
+  const segments = trackedPath.split("/");
+  if (
+    segments.includes("node_modules")
+    || segments.includes("dist")
+    || segments.includes("__pycache__")
+    || trackedPath.endsWith(".pyc")
+    || forbiddenTrackedArtifactExtensions.has(extensionOf(trackedPath).toLowerCase())
+  ) {
+    failures.push(`${trackedPath} is a generated or private tracked artifact`);
+  }
+}
 for (const sourceRoot of sourceRoots) {
   for (const path of await filesUnder(join(repositoryRoot, sourceRoot))) {
     if (!scanExtensions.has(extensionOf(path))) {

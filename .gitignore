@@ -8,4 +8,11 @@ __pycache__/
 .venv/
 *.log
 *.tgz
+*.ndjson
+*.onnx
+*.parquet
+*.pt
+*.sqlite
+*.sqlite3
+data/generated/
 .package-smoke/
