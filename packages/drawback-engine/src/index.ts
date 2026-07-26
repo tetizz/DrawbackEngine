@@ -1,5 +1,13 @@
 export { unrestrictedRule } from "./identity-rule.js";
 export {
+  AUDITED_CAPTURABLE_KING_RULE_IDS,
+  isAuditedCapturableKingRuleId,
+  resolveAuditedCapturableKingRule,
+} from "./audited-capturable-rules.js";
+export type {
+  AuditedCapturableKingRuleId,
+} from "./audited-capturable-rules.js";
+export {
   areAdjacent,
   isInCheck,
   isSquareAttacked,

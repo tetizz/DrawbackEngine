@@ -8,6 +8,9 @@ export { createStockfishAgent, toUciMove } from "./stockfish-agent.js";
 export type { StockfishAgentOptions } from "./stockfish-agent.js";
 export { createPrivateSimulationTrace } from "./trace.js";
 export {
+  createPlayerPrivateSimulationTrace,
+} from "./player-private-trace.js";
+export {
   createTemperatureAgent,
   greedyMaterialAgent,
   mediumHumanLikeAgent,
@@ -17,7 +20,10 @@ export {
 export type { TemperatureAgentOptions } from "./agents.js";
 export { deriveGameSeed, simulateBatch, simulateCatalogBatch } from "./batch.js";
 export { createSimulationRandomStreams } from "./random-streams.js";
-export type { SimulationRandomStreams } from "./random-streams.js";
+export type {
+  SimulationParameterSeeds,
+  SimulationRandomStreams,
+} from "./random-streams.js";
 export { createPlayerPrivateSearchAgent } from "./player-private-agent.js";
 export type {
   PlayerPrivateAgentSearchPolicy,

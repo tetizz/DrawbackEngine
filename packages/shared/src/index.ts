@@ -37,3 +37,9 @@ export class Mulberry32 implements RandomSource {
 export function opposite(color: PlayerColor): PlayerColor {
   return color === "white" ? "black" : "white";
 }
+
+export {
+  deriveSimulationStreamSeed,
+  SIMULATION_RANDOM_POLICY,
+  SIMULATION_RANDOM_STREAM_DOMAINS,
+} from "./simulation-random.js";

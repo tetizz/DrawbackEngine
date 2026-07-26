@@ -1,5 +1,7 @@
 import {
+  deriveSimulationStreamSeed,
   Mulberry32,
+  SIMULATION_RANDOM_STREAM_DOMAINS,
   type PlayerColor,
   type RandomSource,
 } from "@drawbackengine/shared";
@@ -8,16 +10,16 @@ import type {
 } from "@drawbackengine/chess-core";
 
 const MAX_UNSIGNED_32_BIT_INTEGER = 0xffff_ffff;
-const STREAM_DOMAINS = {
-  whiteParameters: 0x4f1b_bcdd,
-  blackParameters: 0x9d76_8a41,
-  whiteAgent: 0x2c92_7f35,
-  blackAgent: 0xe5a4_1c6b,
-} as const;
 
 export interface SimulationRandomStreams {
+  readonly parameterSeeds: SimulationParameterSeeds;
   readonly parameters: SessionParameterRandomSources;
   agent(color: PlayerColor, ply: number): RandomSource;
+}
+
+export interface SimulationParameterSeeds {
+  readonly white: number;
+  readonly black: number;
 }
 
 /**
@@ -29,12 +31,32 @@ export interface SimulationRandomStreams {
  */
 export function createSimulationRandomStreams(
   seed: number,
+  parameterSeeds?: SimulationParameterSeeds,
 ): SimulationRandomStreams {
   checkedSeed(seed);
+  const resolvedParameterSeeds = Object.freeze({
+    white:
+      parameterSeeds?.white
+      ?? deriveSimulationStreamSeed(
+        seed,
+        SIMULATION_RANDOM_STREAM_DOMAINS.whiteParameters,
+        0,
+      ),
+    black:
+      parameterSeeds?.black
+      ?? deriveSimulationStreamSeed(
+        seed,
+        SIMULATION_RANDOM_STREAM_DOMAINS.blackParameters,
+        0,
+      ),
+  });
+  checkedSeed(resolvedParameterSeeds.white);
+  checkedSeed(resolvedParameterSeeds.black);
   return Object.freeze({
+    parameterSeeds: resolvedParameterSeeds,
     parameters: Object.freeze({
-      white: new Mulberry32(deriveStreamSeed(seed, STREAM_DOMAINS.whiteParameters, 0)),
-      black: new Mulberry32(deriveStreamSeed(seed, STREAM_DOMAINS.blackParameters, 0)),
+      white: new Mulberry32(resolvedParameterSeeds.white),
+      black: new Mulberry32(resolvedParameterSeeds.black),
     }),
     agent(color: PlayerColor, ply: number) {
       if (!Number.isSafeInteger(ply) || ply < 0) {
@@ -42,25 +64,13 @@ export function createSimulationRandomStreams(
       }
       const domain =
         color === "white"
-          ? STREAM_DOMAINS.whiteAgent
-          : STREAM_DOMAINS.blackAgent;
-      return new Mulberry32(deriveStreamSeed(seed, domain, ply));
+          ? SIMULATION_RANDOM_STREAM_DOMAINS.whiteAgent
+          : SIMULATION_RANDOM_STREAM_DOMAINS.blackAgent;
+      return new Mulberry32(
+        deriveSimulationStreamSeed(seed, domain, ply),
+      );
     },
   });
-}
-
-function deriveStreamSeed(
-  seed: number,
-  domain: number,
-  index: number,
-): number {
-  let value =
-    (seed ^ domain ^ Math.imul((index + 1) >>> 0, 0x9e37_79b9)) >>> 0;
-  value ^= value >>> 16;
-  value = Math.imul(value, 0x21f0_aaad);
-  value ^= value >>> 15;
-  value = Math.imul(value, 0x735a_2d97);
-  return (value ^ (value >>> 15)) >>> 0;
 }
 
 function checkedSeed(seed: number): void {

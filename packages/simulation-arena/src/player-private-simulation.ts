@@ -32,6 +32,7 @@ import {
   type PlayerPrivateSimulationAgent,
 } from "./player-private-agent.js";
 import { createSimulationRandomStreams } from "./random-streams.js";
+import type { SimulationParameterSeeds } from "./random-streams.js";
 
 export interface PublicOpponentHypothesisRequest {
   readonly observerColor: PlayerColor;
@@ -55,6 +56,7 @@ export interface PlayerPrivateSimulationConfig<
   BlackParameters,
 > {
   readonly seed: number;
+  readonly parameterSeeds?: SimulationParameterSeeds;
   readonly rules: SessionRules<
     WhiteState,
     WhiteParameters,
@@ -78,6 +80,7 @@ export interface PlayerPrivateSimulationPly {
 export interface PlayerPrivateSimulationResult {
   readonly authorityId: "capturable-king/v1";
   readonly seed: number;
+  readonly parameterSeeds: SimulationParameterSeeds;
   readonly plyLimit: number;
   readonly initialFen: string;
   readonly result: SessionResult;
@@ -134,7 +137,7 @@ export async function simulatePlayerPrivateGame<
     throw new RangeError("maxPlies must be a positive safe integer.");
   }
   const seed = checkedSeed(config.seed);
-  const random = createSimulationRandomStreams(seed);
+  const random = createSimulationRandomStreams(seed, config.parameterSeeds);
   const session = DrawbackGameSession.create(
     config.rules,
     random.parameters,
@@ -218,6 +221,7 @@ export async function simulatePlayerPrivateGame<
   return Object.freeze({
     authorityId: "capturable-king/v1",
     seed,
+    parameterSeeds: random.parameterSeeds,
     plyLimit: maxPlies,
     initialFen,
     result: session.result,

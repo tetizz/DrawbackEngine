@@ -12,6 +12,7 @@ import {
 import {
   validatePlayerPrivateTerminal,
 } from "./player-private-terminal-validation.js";
+import { createSimulationRandomStreams } from "./random-streams.js";
 
 export function assertPlayerPrivateWorkerResponse(
   value: unknown,
@@ -81,6 +82,7 @@ function validatePlayerPrivateResult(
     [
       "authorityId",
       "seed",
+      "parameterSeeds",
       "plyLimit",
       "initialFen",
       "result",
@@ -104,6 +106,7 @@ function validatePlayerPrivateResult(
       "Player-private result authority, seed, or ply limit does not match its assignment.",
     );
   }
+  validateParameterSeeds(result["parameterSeeds"], assignment.seed);
   if (result["hypothesisPolicyId"] !== "unrestricted-baseline/v1") {
     throw new TypeError(
       "Player-private result hypothesis provenance is invalid.",
@@ -112,6 +115,27 @@ function validatePlayerPrivateResult(
   validateAgents(result["agents"], policy);
   validateDrawbackLabels(result, assignment);
   validatePositionChain(result, assignment, expectedPlyLimit);
+}
+
+function validateParameterSeeds(value: unknown, gameSeed: number): void {
+  const seeds = protocolRecord(
+    value,
+    "player-private result parameter seeds",
+  );
+  assertExactKeys(
+    seeds,
+    ["white", "black"],
+    "player-private result parameter seeds",
+  );
+  const expected = createSimulationRandomStreams(gameSeed).parameterSeeds;
+  if (
+    seeds["white"] !== expected.white
+    || seeds["black"] !== expected.black
+  ) {
+    throw new TypeError(
+      "Player-private result parameter seeds do not match its assignment.",
+    );
+  }
 }
 
 function validateAgents(

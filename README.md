@@ -98,7 +98,7 @@ Run a parallel batch:
 pnpm --filter @drawbackengine/cli parallel -- 100 8
 ```
 
-Batch commands write one complete privileged simulation trace per NDJSON line
+Orthodox batch commands write one complete privileged simulation trace per NDJSON line
 and refuse to overwrite an existing file. These traces contain post-game
 labels and secret rule state, so they belong in trusted local storage and are
 never model inputs by themselves. DrawbackGuesser owns the separate,
@@ -106,6 +106,12 @@ leakage-checked per-move training schema; a release corpus must pass that
 consumer contract before training. The exact versioned format and trust
 boundary are documented in
 [`docs/architecture/simulation-traces.md`](docs/architecture/simulation-traces.md).
+
+Player-private capturable-king simulations have a separate versioned trace
+contract with full public authority snapshots and exact executable replay.
+They are not written through the orthodox batch command. Bounded streaming
+export and the Guesser adapter must land before a capturable training corpus is
+generated.
 
 Ask the exact drawback-aware search for a move:
 

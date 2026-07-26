@@ -285,6 +285,36 @@ describe("player-private capturable-king simulation", () => {
       temperatureCp: 1,
     });
   });
+
+  it("separates explicit hidden-parameter seeds from gameplay randomness", async () => {
+    const parameterSeeds = {
+      white: 0x1111_1111,
+      black: 0x2222_2222,
+    } as const;
+    const triplePlay = resolvePlayerPrivateRule("triple-play");
+    const first = await simulatePlayerPrivateGame({
+      seed: 1,
+      parameterSeeds,
+      maxPlies: 1,
+      rules: { white: triplePlay, black: triplePlay },
+      whiteAgent: searchAgent,
+      blackAgent: searchAgent,
+    });
+    const second = await simulatePlayerPrivateGame({
+      seed: 0xffff_fffe,
+      parameterSeeds,
+      maxPlies: 1,
+      rules: { white: triplePlay, black: triplePlay },
+      whiteAgent: searchAgent,
+      blackAgent: searchAgent,
+    });
+
+    expect(first.parameterSeeds).toEqual(parameterSeeds);
+    expect(second.parameterSeeds).toEqual(parameterSeeds);
+    expect(first.drawbackSecrets.initial).toEqual(
+      second.drawbackSecrets.initial,
+    );
+  });
 });
 
 function requiredMove(

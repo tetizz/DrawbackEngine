@@ -159,13 +159,20 @@ final secret snapshots for both colors so a game ending before one side moves
 still has complete labels. Those snapshots never enter an agent callback.
 Worker responses are accepted only when assignment labels, complete policy
 metadata, hypothesis-policy ID, ply/FEN continuity, terminal payload, and ply
-limit all match the immutable request. These in-memory records are not yet a
-training wire format.
+limit all match the immutable request.
+
+`createPlayerPrivateSimulationTrace` now projects those results into the
+separate `drawbackengine-player-private-simulation-trace` version 1 contract.
+It records complete capturable authority snapshots, including king-passant
+state, and passes every record through a semantic parser that rebuilds the
+parameters, state transitions, legal masks, moves, and terminal result through
+the executable session. The orthodox trace version remains unchanged.
 
 ## Remaining integration
 
-- Version a capturable-king private trace and dataset schema before these games
-  are accepted into neural-model training data.
+- Add the leakage-checked capturable dataset adapter in DrawbackGuesser before
+  these records are accepted into neural-model training.
+- Add bounded streaming scheduling and atomic capturable NDJSON output.
 - Bind evaluator and hypothesis-manifest digests into trace provenance.
 - Extend the capturable authority audit beyond the current ten-rule catalog.
 - Add evaluator-backed drawbacks without weakening the private capability
