@@ -7,11 +7,17 @@ import {
 import {
   assertExactKeys,
   protocolRecord,
+  type IndexedPlayerPrivateAssignment,
   type PlayerPrivateGameAssignment,
   type PlayerPrivateSearchPolicy,
   type PlayerPrivateWorkerRequest,
   type PlayerPrivateWorkerResponse,
 } from "./player-private-parallel-protocol.js";
+import {
+  assertPlayerPrivateWorkerTaskResultEnvelope,
+  type PlayerPrivateWorkerIdentity,
+  type PlayerPrivateWorkerTaskResult,
+} from "./player-private-worker-protocol.js";
 import {
   validatePlayerPrivateTerminal,
 } from "./player-private-terminal-validation.js";
@@ -31,8 +37,44 @@ export function assertPlayerPrivateWorkerResponse(
   if (
     response["schemaVersion"] !== 1
     || response["kind"] !== "player-private-results"
-    || !Array.isArray(response["games"])
-    || response["games"].length !== assignedGames.length
+  ) {
+    throw new TypeError("Player-private worker response is invalid.");
+  }
+  validateGames(
+    response["games"],
+    assignedGames,
+    policy,
+    maxPlies,
+  );
+}
+
+export function assertPlayerPrivateWorkerTaskResult(
+  value: unknown,
+  expectedIdentity: PlayerPrivateWorkerIdentity,
+  expectedTaskId: number,
+  expectedAttempt: number,
+  assignedGames: readonly IndexedPlayerPrivateAssignment[],
+  policy: PlayerPrivateSearchPolicy,
+  maxPlies?: number,
+): asserts value is PlayerPrivateWorkerTaskResult {
+  assertPlayerPrivateWorkerTaskResultEnvelope(
+    value,
+    expectedIdentity,
+    expectedTaskId,
+    expectedAttempt,
+  );
+  validateGames(value.games, assignedGames, policy, maxPlies);
+}
+
+function validateGames(
+  value: unknown,
+  assignedGames: readonly IndexedPlayerPrivateAssignment[],
+  policy: PlayerPrivateSearchPolicy,
+  maxPlies?: number,
+): void {
+  if (
+    !Array.isArray(value)
+    || value.length !== assignedGames.length
   ) {
     throw new TypeError("Player-private worker response is invalid.");
   }
@@ -40,7 +82,7 @@ export function assertPlayerPrivateWorkerResponse(
     assignedGames.map((game) => [game.gameIndex, game.assignment]),
   );
   const seen = new Set<number>();
-  for (const raw of response["games"]) {
+  for (const raw of value) {
     const game = protocolRecord(raw, "indexed player-private result");
     assertExactKeys(
       game,

@@ -56,7 +56,12 @@ export interface PlayerPrivateAssignmentBatchRequest {
   readonly maxPlies?: number;
 }
 
-interface IndexedPlayerPrivateResult {
+export interface IndexedPlayerPrivateAssignment {
+  readonly gameIndex: number;
+  readonly assignment: PlayerPrivateGameAssignment;
+}
+
+export interface IndexedPlayerPrivateResult {
   readonly gameIndex: number;
   readonly result: PlayerPrivateSimulationResult;
 }
@@ -64,10 +69,7 @@ interface IndexedPlayerPrivateResult {
 export interface PlayerPrivateWorkerRequest {
   readonly schemaVersion: 1;
   readonly kind: "player-private-assignments";
-  readonly assignedGames: readonly {
-    readonly gameIndex: number;
-    readonly assignment: PlayerPrivateGameAssignment;
-  }[];
+  readonly assignedGames: readonly IndexedPlayerPrivateAssignment[];
   readonly policy: PlayerPrivateSearchPolicy;
   readonly maxPlies?: number;
 }
@@ -102,14 +104,15 @@ export function assertPlayerPrivateWorkerRequest(
   }
   assertExactKeys(request, expected, "player-private worker request");
   assertPlayerPrivateSearchPolicy(request["policy"]);
-  if (
-    !Array.isArray(request["assignedGames"])
-    || request["assignedGames"].length === 0
-  ) {
+  assertIndexedPlayerPrivateAssignments(request["assignedGames"]);
+}
+
+function assertIndexedPlayerPrivateAssignments(value: unknown): void {
+  if (!Array.isArray(value) || value.length === 0) {
     throw new TypeError("assignedGames must be a non-empty array.");
   }
   const indexes = new Set<number>();
-  for (const raw of request["assignedGames"]) {
+  for (const raw of value) {
     const game = protocolRecord(raw, "assigned player-private game");
     assertExactKeys(
       game,

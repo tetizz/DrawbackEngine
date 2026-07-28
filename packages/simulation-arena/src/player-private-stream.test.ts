@@ -9,6 +9,9 @@ import {
 import {
   streamPlayerPrivateAssignmentsParallel,
 } from "./player-private-stream.js";
+import {
+  simulatePlayerPrivateAssignmentsParallel,
+} from "./player-private-parallel.js";
 import type {
   PlayerPrivateSearchPolicy,
 } from "./player-private-parallel-protocol.js";
@@ -40,9 +43,22 @@ describe("streaming player-private parallel simulation", () => {
   it(
     "is byte-identical across worker and window sizes",
     async () => {
+      const scheduled = [...schedule(6)];
+      const oneShot = await simulatePlayerPrivateAssignmentsParallel({
+        assignments: scheduled.map(({ assignment }) => assignment),
+        workers: 2,
+        policy,
+        maxPlies: 2,
+      });
+      const oneShotTraces = oneShot.map((result, index) =>
+        createPlayerPrivateSimulationTrace(
+          result,
+          scheduled[index]?.globalIndex ?? index,
+        )
+      );
       const serial = await collectTraces(
         streamPlayerPrivateAssignmentsParallel({
-          assignments: schedule(6),
+          assignments: scheduled,
           workers: 1,
           windowSize: 1,
           policy,
@@ -58,6 +74,8 @@ describe("streaming player-private parallel simulation", () => {
           maxPlies: 2,
         }),
       );
+      expect(serial).toEqual(oneShotTraces);
+      expect(JSON.stringify(serial)).toBe(JSON.stringify(oneShotTraces));
       expect(parallel).toEqual(serial);
       expect(JSON.stringify(parallel)).toBe(JSON.stringify(serial));
     },

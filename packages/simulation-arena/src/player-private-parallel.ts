@@ -1,4 +1,3 @@
-import { Worker } from "node:worker_threads";
 import type {
   PlayerPrivateSimulationResult,
 } from "./player-private-simulation.js";
@@ -7,14 +6,8 @@ import {
   assertPlayerPrivateSearchPolicy,
   assertPositiveSafeInteger,
   type PlayerPrivateAssignmentBatchRequest,
-  type PlayerPrivateGameAssignment,
-  type PlayerPrivateWorkerRequest,
-  type PlayerPrivateWorkerResponse,
 } from "./player-private-parallel-protocol.js";
-import {
-  assertPlayerPrivateWorkerResponse,
-} from "./player-private-result-validation.js";
-import { retryParallelWorkerOperation } from "./worker-retry.js";
+import { createPlayerPrivateWorkerPool } from "./player-private-worker-pool.js";
 
 export {
   assertPlayerPrivateWorkerRequest,
@@ -56,114 +49,30 @@ export async function simulatePlayerPrivateAssignmentsParallel(
   const immutablePolicy = freezeRecursively(
     structuredClone(request.policy),
   );
-  const workerCount = Math.min(request.workers, immutableAssignments.length);
-  const shards = Array.from(
-    { length: workerCount },
-    (): {
-      gameIndex: number;
-      assignment: PlayerPrivateGameAssignment;
-    }[] => [],
-  );
-  immutableAssignments.forEach((assignment, gameIndex) => {
-    shards[gameIndex % workerCount]?.push({ gameIndex, assignment });
+  const pool = await createPlayerPrivateWorkerPool({
+    workers: Math.min(request.workers, immutableAssignments.length),
+    policy: immutablePolicy,
+    ...(request.maxPlies === undefined
+      ? {}
+      : { maxPlies: request.maxPlies }),
   });
-  const responses = await Promise.all(
-    shards.map((assignedGames) =>
-      runWorker({
-        schemaVersion: 1,
-        kind: "player-private-assignments",
-        assignedGames,
-        policy: immutablePolicy,
-        ...(request.maxPlies === undefined
-          ? {}
-          : { maxPlies: request.maxPlies }),
-      })
-    ),
-  );
-  const indexed = responses
-    .flatMap(({ games }) => games)
-    .sort((left, right) => left.gameIndex - right.gameIndex);
-  if (indexed.length !== immutableAssignments.length) {
-    throw new Error(
-      "Player-private workers returned an incomplete game batch.",
+  try {
+    const indexed = await pool.runBatch(
+      immutableAssignments.map((assignment, gameIndex) =>
+        Object.freeze({ gameIndex, assignment })
+      ),
     );
+    return Object.freeze(indexed.map((item, expectedIndex) => {
+      if (item.gameIndex !== expectedIndex) {
+        throw new Error(
+          "Player-private workers returned duplicate or missing indexes.",
+        );
+      }
+      return item.result;
+    }));
+  } finally {
+    await pool.close();
   }
-  return Object.freeze(indexed.map((item, expectedIndex) => {
-    if (item.gameIndex !== expectedIndex) {
-      throw new Error(
-        "Player-private workers returned duplicate or missing indexes.",
-      );
-    }
-    return item.result;
-  }));
-}
-
-function runWorker(
-  request: PlayerPrivateWorkerRequest,
-): Promise<PlayerPrivateWorkerResponse> {
-  return retryParallelWorkerOperation(() => runWorkerOnce(request));
-}
-
-function runWorkerOnce(
-  request: PlayerPrivateWorkerRequest,
-): Promise<PlayerPrivateWorkerResponse> {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(workerEntry(), {
-      workerData: request,
-      execArgv: import.meta.url.endsWith(".ts")
-        ? ["--import", sourceLoader()]
-        : [],
-    });
-    let settled = false;
-    const cleanup = (): void => {
-      worker.removeAllListeners("message");
-      worker.removeAllListeners("error");
-      worker.removeAllListeners("exit");
-    };
-    worker.once("message", (response: unknown) => {
-      try {
-        assertPlayerPrivateWorkerResponse(
-          response,
-          request.assignedGames,
-          request.policy,
-          request.maxPlies,
-        );
-        settled = true;
-        cleanup();
-        resolve(response);
-      } catch (error) {
-        settled = true;
-        cleanup();
-        reject(
-          error instanceof Error
-            ? error
-            : new Error("Player-private response validation failed."),
-        );
-      }
-    });
-    worker.once("error", (error) => {
-      if (!settled) {
-        settled = true;
-        cleanup();
-        reject(
-          error instanceof Error
-            ? error
-            : new Error("Player-private worker failed."),
-        );
-      }
-    });
-    worker.once("exit", (code) => {
-      if (!settled) {
-        settled = true;
-        cleanup();
-        reject(
-          new Error(
-            `Player-private worker exited before responding with code ${String(code)}.`,
-          ),
-        );
-      }
-    });
-  });
 }
 
 function freezeRecursively<T>(value: T): T {
@@ -174,19 +83,4 @@ function freezeRecursively<T>(value: T): T {
     freezeRecursively(child);
   }
   return Object.freeze(value);
-}
-
-function workerEntry(): URL {
-  const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
-  return new URL(
-    `./player-private-parallel-worker.${extension}`,
-    import.meta.url,
-  );
-}
-
-function sourceLoader(): string {
-  return new URL(
-    "../node_modules/tsx/dist/loader.mjs",
-    import.meta.url,
-  ).href;
 }

@@ -14,7 +14,10 @@ import type {
   PreparedCatalogSelectionOptions,
 } from "./prepared-catalog.js";
 import { PREPARED_EXECUTABLE_RULE_IDS } from "./prepared-catalog.js";
-import { retryParallelWorkerOperation } from "./worker-retry.js";
+import {
+  TransientParallelWorkerError,
+  retryParallelWorkerOperation,
+} from "./worker-retry.js";
 
 export type ParallelRuleId = ExecutableRuleId;
 export type ParallelAgentId = CatalogAgentId;
@@ -143,19 +146,32 @@ function runWorkerOnce(
       worker.removeAllListeners("error");
       worker.removeAllListeners("exit");
     };
-    worker.once("message", (response: ParallelWorkerResponse) => {
-      settled = true;
-      cleanup();
-      resolve(response);
+    worker.once("message", (value: unknown) => {
+      try {
+        assertParallelWorkerResponse(value);
+        settled = true;
+        cleanup();
+        resolve(value);
+      } catch (error: unknown) {
+        settled = true;
+        cleanup();
+        reject(
+          error instanceof Error
+            ? error
+            : new TypeError("Parallel worker response validation failed."),
+        );
+      }
     });
     worker.once("error", (error) => {
       if (!settled) {
         settled = true;
         cleanup();
         reject(
-          error instanceof Error
-            ? error
-            : new Error("Parallel simulation worker failed."),
+          new TransientParallelWorkerError(
+            "worker-process-error",
+            "Parallel simulation worker process failed.",
+            { cause: error },
+          ),
         );
       }
     });
@@ -164,7 +180,8 @@ function runWorkerOnce(
         settled = true;
         cleanup();
         reject(
-          new Error(
+          new TransientParallelWorkerError(
+            "worker-process-exit",
             `Parallel simulation worker exited before responding with code ${String(code)}.`,
           ),
         );
@@ -315,6 +332,18 @@ function taggedObject(value: unknown, label: string): Record<string, unknown> {
     throw new TypeError(`${label} must be an object.`);
   }
   return value as Record<string, unknown>;
+}
+
+export function assertParallelWorkerResponse(
+  value: unknown,
+): asserts value is ParallelWorkerResponse {
+  const response = taggedObject(value, "parallel worker response");
+  exactObjectKeys(response, ["games"], "parallel worker response");
+  if (!Array.isArray(response["games"])) {
+    throw new TypeError(
+      "parallel worker response games must be an array.",
+    );
+  }
 }
 
 export function assertParallelWorkerRequest(

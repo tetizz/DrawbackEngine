@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertParallelWorkerRequest,
+  assertParallelWorkerResponse,
   simulateBatchParallel,
   simulateCatalogBatchParallel,
 } from "./parallel.js";
@@ -106,6 +107,18 @@ describe("parallel simulation", () => {
     expect(() => {
       assertParallelWorkerRequest({ ...valid, extra: true });
     }).toThrow("invalid fields");
+  });
+
+  it("rejects malformed worker responses as permanent protocol errors", () => {
+    expect(() => {
+      assertParallelWorkerResponse({ games: [] });
+    }).not.toThrow();
+    expect(() => {
+      assertParallelWorkerResponse({ games: [], extra: true });
+    }).toThrow("invalid fields");
+    expect(() => {
+      assertParallelWorkerResponse({ games: "forged" });
+    }).toThrow("must be an array");
   });
 
   it(
