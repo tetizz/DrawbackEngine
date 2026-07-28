@@ -5,7 +5,9 @@ import {
 } from "./player-private-catalog.js";
 
 describe("player-private rule catalog", () => {
-  it("contains only unique capturable-king-audited rules", () => {
+  it("keeps the historical version-two catalog at exactly 25 rules", () => {
+    expect(PLAYER_PRIVATE_RULE_IDS).toHaveLength(25);
+    expect(PLAYER_PRIVATE_RULE_IDS).not.toContain("far-sighted");
     expect(new Set(PLAYER_PRIVATE_RULE_IDS).size).toBe(
       PLAYER_PRIVATE_RULE_IDS.length,
     );

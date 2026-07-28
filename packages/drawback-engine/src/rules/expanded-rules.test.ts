@@ -107,6 +107,20 @@ describe("expanded rule metadata and families", () => {
     }
   });
 
+  it("opts only Shadow Queen and Stop Stalling into capturable-king authority", () => {
+    const expected = ["standard-chess/v1", "capturable-king/v1"];
+    expect(shadowQueenRule.supportedAuthorities).toEqual(expected);
+    expect(stopStallingRule.supportedAuthorities).toEqual(expected);
+    expect(Object.isFrozen(shadowQueenRule.supportedAuthorities)).toBe(true);
+    expect(Object.isFrozen(stopStallingRule.supportedAuthorities)).toBe(true);
+    expect(shadowQueenRule.supportedAuthorities).not.toBe(
+      stopStallingRule.supportedAuthorities,
+    );
+    expect(numberOfTheBeastRule.supportedAuthorities).toBeUndefined();
+    expect(entrenchedRule.supportedAuthorities).toBeUndefined();
+    expect(noShufflingRule.supportedAuthorities).toBeUndefined();
+  });
+
   it("returns new filtered arrays without mutating ordinary legal moves", () => {
     const moves = Object.freeze([
       move({ from: "g5", to: "g6", piece: "pawn" }),
@@ -116,6 +130,36 @@ describe("expanded rule metadata and families", () => {
     const filtered = numberOfTheBeastRule.filterLegalMoves(context(), moves);
     expect(filtered).not.toBe(moves);
     expect(moves).toEqual(before);
+  });
+
+  it.each([
+    {
+      name: "Shadow Queen",
+      rule: shadowQueenRule,
+      moves: [
+        move({ from: "a1", to: "b2", piece: "bishop" }),
+        move({ from: "d1", to: "d3", piece: "queen" }),
+      ],
+    },
+    {
+      name: "Stop Stalling",
+      rule: stopStallingRule,
+      moves: [
+        move({ from: "a1", to: "a2", piece: "rook" }),
+        move({ from: "a1", to: "b1", piece: "rook" }),
+      ],
+    },
+  ])("$name preserves frozen move inputs", ({ rule, moves: candidates }) => {
+    const moves = Object.freeze(candidates.map((candidate) =>
+      Object.freeze(candidate)
+    ));
+    const before = [...moves];
+    const filtered = rule.filterLegalMoves(context(), moves);
+    expect(filtered).not.toBe(moves);
+    expect(filtered).toEqual([moves[0]]);
+    expect(moves).toEqual(before);
+    expect(moves[0]).toBe(before[0]);
+    expect(moves[1]).toBe(before[1]);
   });
 });
 
@@ -164,11 +208,43 @@ describe("Shadow Queen", () => {
       .toEqual([dark]);
   });
 
-  it("classifies a promotion by its pawn mover and leaves other specials alone", () => {
+  it.each(["white", "black"] as const)(
+    "uses destination color for %s direct king captures",
+    (color) => {
+      const darkCapture = move({
+        from: color === "white" ? "d1" : "d8",
+        to: "a1",
+        piece: "queen",
+        color,
+        captured: "king",
+      });
+      const lightCapture = move({
+        from: color === "white" ? "d1" : "d8",
+        to: "b1",
+        piece: "queen",
+        color,
+        captured: "king",
+      });
+      expect(shadowQueenRule.filterLegalMoves(
+        context(color),
+        [darkCapture, lightCapture],
+      )).toEqual([darkCapture]);
+    },
+  );
+
+  it("classifies promotion by its pawn mover, including a light-square king capture", () => {
+    const kingCapturePromotion = move({
+      from: "b7",
+      to: "a8",
+      piece: "pawn",
+      captured: "king",
+      promotion: "queen",
+      flags: "capture,promotion",
+    });
     expect(shadowQueenRule.filterLegalMoves(
       context(),
-      [promotion, enPassant, castle],
-    )).toEqual([promotion, enPassant, castle]);
+      [promotion, kingCapturePromotion, enPassant, castle],
+    )).toEqual([promotion, kingCapturePromotion, enPassant, castle]);
   });
 });
 
@@ -223,6 +299,48 @@ describe("No Shuffling and Stop Stalling", () => {
       context(),
       [rookVertical, rookLateral, diagonal, enPassant, promotion, castle],
     )).toEqual([rookVertical, diagonal, enPassant, promotion]);
+  });
+
+  it.each(["white", "black"] as const)(
+    "Stop Stalling filters %s king captures by primary endpoints",
+    (color) => {
+      const lateralKingCapture = move({
+        from: color === "white" ? "e7" : "e2",
+        to: color === "white" ? "h7" : "h2",
+        piece: "rook",
+        color,
+        captured: "king",
+      });
+      const verticalKingCapture = move({
+        from: color === "white" ? "e7" : "e2",
+        to: color === "white" ? "e8" : "e1",
+        piece: "rook",
+        color,
+        captured: "king",
+      });
+      expect(stopStallingRule.filterLegalMoves(
+        context(color),
+        [lateralKingCapture, verticalKingCapture],
+      )).toEqual([verticalKingCapture]);
+    },
+  );
+
+  it("Stop Stalling rejects both castling directions by king endpoints", () => {
+    const queenSide = move({
+      from: "e1",
+      to: "c1",
+      piece: "king",
+      flags: "quiet,queenside-castle",
+    });
+    const vertical = move({
+      from: "e1",
+      to: "e2",
+      piece: "king",
+    });
+    expect(stopStallingRule.filterLegalMoves(
+      context(),
+      [castle, queenSide, vertical],
+    )).toEqual([vertical]);
   });
 });
 

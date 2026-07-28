@@ -56,6 +56,7 @@ export const professionalCourtesyRule = defineMoveFilterRule({
   name: "Professional Courtesy",
   description:
     "A non-pawn piece cannot capture an opposing non-pawn piece of the same type.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) =>
     move.captured === undefined ||
     move.captured === "pawn" ||
@@ -68,6 +69,7 @@ export const snipersRule = defineMoveFilterRule({
   name: "Snipers",
   description:
     "A bishop can capture only from at least four diagonal squares away.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) =>
     move.piece !== "bishop" ||
     !isCapture(move) ||
@@ -79,6 +81,7 @@ export const stayAtHomeMomRule = defineMoveFilterRule({
   id: "stay-at-home-mom",
   name: "Stay at Home Mom",
   description: "Queens can move only to the affected player's two home ranks.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) => {
     if (move.piece !== "queen") {
       return true;
@@ -93,6 +96,7 @@ export const elephantsFearMiceRule = defineMoveFilterRule({
   id: "elephants-fear-mice",
   name: "Elephants Fear Mice",
   description: "Non-pawn pieces cannot capture opposing pawns.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) => move.captured !== "pawn" || move.piece === "pawn",
   rejection: (move) => `${move.san} captures a pawn with a non-pawn piece.`,
 });
@@ -101,6 +105,7 @@ export const farSightedRule = defineMoveFilterRule({
   id: "far-sighted",
   name: "Far Sighted",
   description: "Pieces cannot capture an adjacent target.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) => !isCapture(move) || travelDistance(move) > 1,
   rejection: (move) => `${move.san} captures an adjacent target.`,
 });
@@ -109,6 +114,7 @@ export const whitesOfTheirEyesRule = defineMoveFilterRule({
   id: "whites-of-their-eyes",
   name: "Whites of Their Eyes",
   description: "Capturing moves can have Manhattan distance at most two.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) => !isCapture(move) || manhattanDistance(move) <= 2,
   rejection: (move) => `${move.san} is a capture with Manhattan distance above two.`,
 });
@@ -117,6 +123,7 @@ export const champingAtTheBitRule = defineMoveFilterRule({
   id: "champing-at-the-bit",
   name: "Champing at the Bit",
   description: "Every pawn move must have Manhattan distance exactly two.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) => move.piece !== "pawn" || manhattanDistance(move) === 2,
   rejection: (move) => `${move.san} is a pawn move whose Manhattan distance is not two.`,
 });
@@ -127,6 +134,7 @@ export const scentOfBloodRule = defineMoveFilterRule({
   description:
     "A piece that has an ordinary legal capture cannot make a non-capturing move.",
   dependsOnMoveSet: true,
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move, moves) =>
     isCapture(move) ||
     !moves.some((candidate) => candidate.from === move.from && isCapture(candidate)),
@@ -139,6 +147,7 @@ export const indecisiveRule = defineMoveFilterRule({
   description:
     "A piece cannot capture when it has more than one ordinary legal capturing move.",
   dependsOnMoveSet: true,
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move, moves) =>
     !isCapture(move) ||
     moves.filter((candidate) => candidate.from === move.from && isCapture(candidate))
@@ -150,6 +159,7 @@ export const controlCenterRule = defineMoveFilterRule({
   id: "control-center",
   name: "Control Center",
   description: "Non-capturing moves must end on one of the four central files.",
+  supportedAuthorities: ["standard-chess/v1", "capturable-king/v1"],
   permits: (move) =>
     isCapture(move) || ["c", "d", "e", "f"].includes(move.to[0] ?? ""),
   rejection: (move) => `${move.san} is a quiet move outside the four central files.`,

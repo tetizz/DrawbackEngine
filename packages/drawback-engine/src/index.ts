@@ -1,11 +1,16 @@
 export { unrestrictedRule } from "./identity-rule.js";
 export {
   AUDITED_CAPTURABLE_KING_RULE_IDS,
+  AUDITED_CAPTURABLE_KING_RULE_IDS_V2,
+  AUDITED_CAPTURABLE_KING_RULE_IDS_V3,
   isAuditedCapturableKingRuleId,
+  isAuditedCapturableKingRuleIdV3,
   resolveAuditedCapturableKingRule,
+  resolveAuditedCapturableKingRuleV3,
 } from "./audited-capturable-rules.js";
 export type {
   AuditedCapturableKingRuleId,
+  AuditedCapturableKingRuleIdV3,
 } from "./audited-capturable-rules.js";
 export {
   areAdjacent,

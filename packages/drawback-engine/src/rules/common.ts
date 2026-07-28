@@ -61,14 +61,17 @@ export function defineMoveFilterRule(configuration: {
   readonly permits: (move: ChessMove, moves: readonly ChessMove[]) => boolean;
   readonly rejection: (move: ChessMove) => string;
 }): DrawbackRule<StatelessRuleState, NoParameters> {
+  const supportedAuthorities = configuration.supportedAuthorities === undefined
+    ? undefined
+    : Object.freeze([...configuration.supportedAuthorities]);
   return {
     id: configuration.id,
     name: configuration.name,
     description: configuration.description,
     verification: "implemented-unverified",
-    ...(configuration.supportedAuthorities === undefined
+    ...(supportedAuthorities === undefined
       ? {}
-      : { supportedAuthorities: configuration.supportedAuthorities }),
+      : { supportedAuthorities }),
     generateParameters: () => ({}),
     initialize: () => ({ movesApplied: 0 }),
     filterLegalMoves: (_context, moves) =>

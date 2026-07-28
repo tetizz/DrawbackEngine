@@ -16,6 +16,13 @@ specified separately in
 Together these two audited groups currently expose 25 labels to simulation and
 symbolic opponent reconstruction.
 
+An additional stateless compatibility audit prepares 12 existing standard
+rules for the same authority. They are available only through the opt-in
+37-label engine registry; the player-private v2 trace, simulator, and model
+vocabulary remain frozen at 25 until a separately versioned migration. See
+[`stateless-compatibility-wave.md`](stateless-compatibility-wave.md) for the
+exact rule order, edge semantics, and unresolved ambiguities.
+
 The machine-readable rules live in
 `data/catalog/capturable-king-drawbacks-v3.json`. The authority-scoped objects
 are intentionally not added to the frozen 182-class standard-authority v2
