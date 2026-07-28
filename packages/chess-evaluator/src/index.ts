@@ -9,13 +9,38 @@ export type {
 export {
   DRAWBACKCHESS_FAIRY_VARIANT,
   DRAWBACKCHESS_FAIRY_VARIANT_SHA256,
+  initializeAuthenticatedFairyStockfishLeafEvaluator,
   initializeFairyStockfishLeafEvaluator,
   UnsupportedFairyStockfishLeafError,
 } from "./fairy-stockfish-leaf-evaluator.js";
 export type {
+  InitializeAuthenticatedFairyStockfishLeafEvaluatorOptions,
   InitializeFairyStockfishLeafEvaluatorOptions,
   InitializedFairyStockfishLeafEvaluator,
 } from "./fairy-stockfish-leaf-evaluator.js";
+export {
+  AuthenticatedNodeUciEngineError,
+  createAuthenticatedNodeUciEngine,
+  digestUciOptionDeclarations,
+  UciExecutableIntegrityError,
+} from "./authenticated-node-uci-engine.js";
+export type {
+  AuthenticatedNodeUciEngine,
+  AuthenticatedNodeUciEngineConfig,
+  AuthenticatedUciEngineIdentity,
+  SerializableUciEngineIdentity,
+} from "./authenticated-node-uci-engine.js";
+export {
+  createOwnedNodeUciLeafEvaluator,
+  deriveNodeUciLeafEvaluatorId,
+  NodeUciLeafEvaluatorFactoryError,
+} from "./node-uci-leaf-evaluator-factory.js";
+export type {
+  NodeFairyStockfishLeafEvaluatorConfig,
+  NodeStockfishLeafEvaluatorConfig,
+  NodeUciLeafEvaluatorConfig,
+  OwnedNodeUciLeafEvaluator,
+} from "./node-uci-leaf-evaluator-factory.js";
 export {
   ConstraintCache,
   ConstraintCacheConflictError,
@@ -47,7 +72,6 @@ export {
 } from "./node-turn-constraint-provider-factory.js";
 export type {
   NodeUciTurnConstraintProviderConfig,
-  SerializableUciEngineIdentity,
 } from "./node-turn-constraint-provider-factory.js";
 export { parseBestMove, parseInfo } from "./parser.js";
 export {

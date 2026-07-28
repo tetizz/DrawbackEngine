@@ -49,6 +49,19 @@ export interface InitializeFairyStockfishLeafEvaluatorOptions {
   readonly id?: string;
 }
 
+export interface InitializeAuthenticatedFairyStockfishLeafEvaluatorOptions {
+  /** Initialized client whose exact executable and UCI identity are trusted. */
+  readonly client: UciClient;
+  readonly depth: number;
+  readonly variant: {
+    /** Caller-owned bytes copied before authentication. */
+    readonly bytes: Uint8Array;
+    /** Caller-pinned digest; never replaced with a measured digest. */
+    readonly sha256: string;
+  };
+  readonly id?: string;
+}
+
 interface AuthenticatedFairyVariantConfig {
   readonly variantPath: string;
   readonly sha256: typeof DRAWBACKCHESS_FAIRY_VARIANT_SHA256;
@@ -58,6 +71,11 @@ interface AuthenticatedFairyVariantConfig {
 interface PrivateFairyVariantConfig {
   readonly directoryPath: string;
   readonly variantPath: string;
+}
+
+interface FairyStockfishLeafRuntimeOptions {
+  readonly client: UciClient;
+  readonly depth: number;
 }
 
 export interface InitializedFairyStockfishLeafEvaluator
@@ -143,17 +161,51 @@ function validateVariantPath(variantPath: string): void {
 export async function initializeFairyStockfishLeafEvaluator(
   options: InitializeFairyStockfishLeafEvaluatorOptions,
 ): Promise<InitializedFairyStockfishLeafEvaluator> {
-  if (!Number.isSafeInteger(options.depth) || options.depth <= 0) {
-    throw new RangeError(
-      "Fairy-Stockfish leaf depth must be a positive integer.",
-    );
-  }
+  validateDepth(options.depth);
   const authenticatedBefore =
     await authenticateFairyStockfishVariantConfig(options.variantPath);
+  return initializeFairyStockfishLeafEvaluatorFromBytes(
+    options,
+    authenticatedBefore.bytes,
+    true,
+  );
+}
+
+/**
+ * Loads caller-pinned variant bytes into an already authenticated UCI process.
+ * The evaluator owns the client after this call and always removes its private
+ * configuration during close or failed initialization.
+ */
+export async function initializeAuthenticatedFairyStockfishLeafEvaluator(
+  options: InitializeAuthenticatedFairyStockfishLeafEvaluatorOptions,
+): Promise<InitializedFairyStockfishLeafEvaluator> {
+  validateDepth(options.depth);
+  const authenticatedBytes = authenticateFairyStockfishVariantBytes(
+    options.variant.bytes,
+    options.variant.sha256,
+  );
+  return initializeFairyStockfishLeafEvaluatorFromBytes(
+    options,
+    authenticatedBytes,
+    false,
+  );
+}
+
+async function initializeFairyStockfishLeafEvaluatorFromBytes(
+  options: {
+    readonly client: UciClient;
+    readonly depth: number;
+    readonly id?: string;
+  },
+  authenticatedBytes: Uint8Array,
+  initializeClient: boolean,
+): Promise<InitializedFairyStockfishLeafEvaluator> {
   const privateConfig =
-    await materializePrivateVariantConfig(authenticatedBefore.bytes);
+    await materializePrivateVariantConfig(authenticatedBytes);
   try {
-    await options.client.initialize();
+    if (initializeClient) {
+      await options.client.initialize();
+    }
     assertVariantOptionsAdvertised(options.client);
     await options.client.configureOptions([
       { name: "VariantPath", value: privateConfig.variantPath },
@@ -231,6 +283,38 @@ export async function initializeFairyStockfishLeafEvaluator(
   };
 }
 
+function authenticateFairyStockfishVariantBytes(
+  suppliedBytes: Uint8Array,
+  expectedSha256: string,
+): Uint8Array {
+  if (!/^[0-9a-f]{64}$/u.test(expectedSha256)) {
+    throw new RangeError(
+      "Fairy-Stockfish variant SHA-256 must be a lowercase digest.",
+    );
+  }
+  if (expectedSha256 !== DRAWBACKCHESS_FAIRY_VARIANT_SHA256) {
+    throw new FairyStockfishLeafEvaluatorError(
+      "Fairy-Stockfish variant digest is not the supported drawbackchess digest.",
+    );
+  }
+  const bytes = new Uint8Array(suppliedBytes);
+  const actualSha256 = createHash("sha256").update(bytes).digest("hex");
+  if (actualSha256 !== expectedSha256) {
+    throw new FairyStockfishLeafEvaluatorError(
+      "Fairy-Stockfish variant bytes do not match the caller-pinned digest.",
+    );
+  }
+  return bytes;
+}
+
+function validateDepth(depth: number): void {
+  if (!Number.isSafeInteger(depth) || depth <= 0) {
+    throw new RangeError(
+      "Fairy-Stockfish leaf depth must be a positive integer.",
+    );
+  }
+}
+
 async function materializePrivateVariantConfig(
   bytes: Uint8Array,
 ): Promise<PrivateFairyVariantConfig> {
@@ -285,7 +369,7 @@ async function removePrivateVariantConfig(
 }
 
 async function evaluateLeaf(
-  options: InitializeFairyStockfishLeafEvaluatorOptions,
+  options: FairyStockfishLeafRuntimeOptions,
   position: LeafPosition,
   signal: AbortSignal | undefined,
 ): Promise<number> {

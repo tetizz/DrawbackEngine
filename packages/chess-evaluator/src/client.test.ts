@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { UciTransport } from "./types.js";
 import {
   MockUciTransport,
   UciClient,
@@ -276,6 +277,42 @@ describe("UciClient", () => {
     expect(transport.complete).toBe(true);
   });
 
+  it("keeps stop delivery inside the original absolute search deadline", async () => {
+    const transport = new MockUciTransport([
+      ...initializedSteps(),
+      { command: `position fen ${FEN}` },
+      { command: "go nodes 100" },
+      {
+        command: "stop",
+        onSend: () => new Promise<void>(() => undefined),
+      },
+      { command: "quit", closeAfter: true },
+    ]);
+    const client = new UciClient(transport, { timeoutMs: 30 });
+    await client.initialize();
+    const controller = new AbortController();
+    const pending = client.evaluateFen(
+      FEN,
+      { nodes: 100 },
+      [],
+      { signal: controller.signal },
+    );
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (transport.commands.includes("go nodes 100")) {
+        break;
+      }
+      await Promise.resolve();
+    }
+    controller.abort();
+
+    await expect(pending).rejects.toThrow(
+      "Timed out after 30ms waiting for search stop",
+    );
+    await expect(client.ready()).rejects.toThrow("unusable");
+    await expect(client.close()).resolves.toBeUndefined();
+    expect(transport.complete).toBe(true);
+  });
+
   it("rejects a signal already aborted without starting a search", async () => {
     const transport = new MockUciTransport(initializedSteps());
     const client = new UciClient(transport);
@@ -315,6 +352,61 @@ describe("UciClient", () => {
     await expect(pending).rejects.toThrow("Timed out");
   });
 
+  it("uses one absolute search deadline even while info lines continue", async () => {
+    const responses: string[] = [];
+    let chattering = false;
+    let closed = false;
+    const commands: string[] = [];
+    const transport: UciTransport = {
+      send(command) {
+        commands.push(command);
+        if (command === "uci") {
+          responses.push("id name Chattering Engine", "uciok");
+        } else if (command === "isready") {
+          responses.push("readyok");
+        } else if (command.startsWith("go ")) {
+          chattering = true;
+        } else if (command === "quit") {
+          chattering = false;
+        }
+        return Promise.resolve();
+      },
+      lines() {
+        return {
+          [Symbol.asyncIterator]: () => ({
+            next: () => {
+              const response = responses.shift();
+              if (response !== undefined) {
+                return Promise.resolve({ done: false, value: response });
+              }
+              if (chattering) {
+                return Promise.resolve({
+                  done: false,
+                  value: "info depth 1 nodes 1 score cp 0 pv e2e4",
+                });
+              }
+              return Promise.resolve({ done: true, value: undefined });
+            },
+          }),
+        };
+      },
+      close() {
+        closed = true;
+        return Promise.resolve();
+      },
+    };
+    const client = new UciClient(transport, { timeoutMs: 20 });
+    await client.initialize();
+
+    await expect(client.evaluateFen(FEN, { depth: 99 })).rejects.toThrow(
+      "Timed out after 20ms waiting for bestmove",
+    );
+    await expect(client.ready()).rejects.toThrow("unusable");
+    await expect(client.close()).resolves.toBeUndefined();
+    expect(commands).toContain("quit");
+    expect(closed).toBe(true);
+  });
+
   it("fails explicitly if the transport ends before bestmove", async () => {
     const transport = new MockUciTransport([
       ...initializedSteps(),
@@ -343,6 +435,31 @@ describe("UciClient", () => {
     await client.close();
     await expect(client.newGame()).rejects.toThrow("closed");
     expect(transport.commands.at(-1)).toBe("quit");
+  });
+
+  it("closes the transport even when sending quit fails", async () => {
+    let closeCalls = 0;
+    const transport: UciTransport = {
+      send() {
+        return Promise.reject(new Error("quit write failed"));
+      },
+      lines() {
+        return {
+          [Symbol.asyncIterator]: () => ({
+            next: () => Promise.resolve({ done: true, value: undefined }),
+          }),
+        };
+      },
+      close() {
+        closeCalls += 1;
+        return Promise.resolve();
+      },
+    };
+    const client = new UciClient(transport);
+
+    await expect(client.close()).rejects.toThrow("quit write failed");
+    await expect(client.close()).resolves.toBeUndefined();
+    expect(closeCalls).toBe(1);
   });
 });
 

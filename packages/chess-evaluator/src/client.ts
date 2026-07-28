@@ -228,20 +228,30 @@ export class UciClient {
     }
     const go = validateLimit(limit);
     const searchMoves = validateRootMoves(rootMoves);
+    const deadlineMs = performance.now() + this.#timeoutMs;
     this.#searching = true;
     try {
-      await this.#transport.send(`position fen ${normalizedFen}`);
-      await this.#transport.send(`go ${go}${searchMoves}`);
+      await this.#sendBeforeDeadline(
+        `position fen ${normalizedFen}`,
+        deadlineMs,
+        "position setup",
+      );
+      await this.#sendBeforeDeadline(
+        `go ${go}${searchMoves}`,
+        deadlineMs,
+        "search start",
+      );
       let latestInfo: UciSearchInfo | null = null;
       let cancelled = false;
       for (;;) {
         const event = await this.#nextSearchEvent(
           "bestmove",
           cancelled ? undefined : options.signal,
+          deadlineMs,
         );
         if (event.kind === "abort") {
           cancelled = true;
-          await this.#transport.send("stop");
+          await this.#sendBeforeDeadline("stop", deadlineMs, "search stop");
           continue;
         }
         const line = event.line;
@@ -288,8 +298,33 @@ export class UciClient {
       return;
     }
     this.#closed = true;
-    await this.#transport.send("quit");
-    await this.#transport.close();
+    let quitFailure: Error | undefined;
+    try {
+      await this.#transport.send("quit");
+    } catch (error: unknown) {
+      quitFailure = protocolFailure(
+        error,
+        "UCI transport rejected the quit command.",
+      );
+    }
+    try {
+      await this.#transport.close();
+    } catch (closeFailure: unknown) {
+      const normalizedCloseFailure = protocolFailure(
+        closeFailure,
+        "UCI transport shutdown failed.",
+      );
+      if (quitFailure !== undefined) {
+        throw new AggregateError(
+          [quitFailure, normalizedCloseFailure],
+          "UCI quit command and transport shutdown both failed.",
+        );
+      }
+      throw normalizedCloseFailure;
+    }
+    if (quitFailure !== undefined) {
+      throw quitFailure;
+    }
   }
 
   #assertOpen(): void {
@@ -393,9 +428,17 @@ export class UciClient {
   async #nextSearchEvent(
     waitingFor: string,
     signal?: AbortSignal,
+    deadlineMs?: number,
   ): Promise<{ readonly kind: "line"; readonly line: string } | {
     readonly kind: "abort";
   }> {
+    const timeoutMs = deadlineMs === undefined
+      ? this.#timeoutMs
+      : deadlineMs - performance.now();
+    if (timeoutMs <= 0) {
+      this.#poisoned = true;
+      throw this.#timeoutError(waitingFor);
+    }
     const read = this.#pendingRead ?? this.#iterator.next();
     this.#pendingRead = read;
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -403,7 +446,7 @@ export class UciClient {
     const timeoutPromise = new Promise<{ readonly kind: "timeout" }>((resolve) => {
       timeout = setTimeout(() => {
         resolve({ kind: "timeout" });
-      }, this.#timeoutMs);
+      }, timeoutMs);
     });
     const readPromise = read.then((result) => ({
       kind: "read" as const,
@@ -435,9 +478,7 @@ export class UciClient {
       }
       if (result.kind === "timeout") {
         this.#poisoned = true;
-        throw new UciTimeoutError(
-          `Timed out after ${String(this.#timeoutMs)}ms waiting for ${waitingFor}.`,
-        );
+        throw this.#timeoutError(waitingFor);
       }
       this.#pendingRead = null;
       if (result.result.done) {
@@ -453,6 +494,44 @@ export class UciClient {
       }
       removeAbortListener?.();
     }
+  }
+
+  async #sendBeforeDeadline(
+    command: string,
+    deadlineMs: number,
+    waitingFor: string,
+  ): Promise<void> {
+    const timeoutMs = deadlineMs - performance.now();
+    if (timeoutMs <= 0) {
+      this.#poisoned = true;
+      throw this.#timeoutError(waitingFor);
+    }
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<"timeout">((resolve) => {
+      timeout = setTimeout(() => {
+        resolve("timeout");
+      }, timeoutMs);
+    });
+    try {
+      const result = await Promise.race([
+        this.#transport.send(command).then(() => "sent" as const),
+        timeoutPromise,
+      ]);
+      if (result === "timeout") {
+        this.#poisoned = true;
+        throw this.#timeoutError(waitingFor);
+      }
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  #timeoutError(waitingFor: string): UciTimeoutError {
+    return new UciTimeoutError(
+      `Timed out after ${String(this.#timeoutMs)}ms waiting for ${waitingFor}.`,
+    );
   }
 }
 
@@ -481,4 +560,10 @@ function createAbortError(): Error {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
+}
+
+function protocolFailure(error: unknown, message: string): Error {
+  return error instanceof Error
+    ? error
+    : new UciProtocolError(message, { cause: error });
 }
