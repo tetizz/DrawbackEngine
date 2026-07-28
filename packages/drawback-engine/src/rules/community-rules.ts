@@ -23,6 +23,11 @@ const PIECE_VALUE: Readonly<Record<PieceType, number>> = {
   king: Number.POSITIVE_INFINITY,
 };
 
+const STANDARD_AND_CAPTURABLE_AUTHORITIES = Object.freeze([
+  "standard-chess/v1",
+  "capturable-king/v1",
+] as const);
+
 function evidence(
   ruleId: string,
   message: string,
@@ -37,6 +42,7 @@ export const greedyRule = defineMoveFilterRule({
   description:
     "A capture is forbidden when an ordinary legal capture of a higher-value piece exists.",
   dependsOnMoveSet: true,
+  supportedAuthorities: STANDARD_AND_CAPTURABLE_AUTHORITIES,
   permits: (move, moves) => {
     if (move.captured === undefined) {
       return true;
@@ -177,6 +183,7 @@ export const outOfBreathRule: DrawbackRule<
   name: "Out of Breath",
   description: "The affected player can move a king only once.",
   verification: "implemented-unverified",
+  supportedAuthorities: STANDARD_AND_CAPTURABLE_AUTHORITIES,
   generateParameters: () => ({}),
   initialize: () => ({ kingMoves: 0 }),
   filterLegalMoves: (context, moves) =>
@@ -202,6 +209,7 @@ export const queenBeeRule: DrawbackRule<QueenBeeState, NoParameters> = {
   name: "Queen Bee",
   description: "After capturing with a queen, the affected player can no longer move queens.",
   verification: "implemented-unverified",
+  supportedAuthorities: STANDARD_AND_CAPTURABLE_AUTHORITIES,
   generateParameters: () => ({}),
   initialize: () => ({ queenCaptureOccurred: false }),
   filterLegalMoves: (context, moves) =>
@@ -236,6 +244,7 @@ function defineAlternationRule(configuration: {
     name: configuration.name,
     description: configuration.description,
     verification: "implemented-unverified",
+    supportedAuthorities: STANDARD_AND_CAPTURABLE_AUTHORITIES,
     generateParameters: () => ({}),
     initialize: () => ({ previousClass: null }),
     filterLegalMoves: (context, moves) =>

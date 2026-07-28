@@ -3,14 +3,18 @@ export {
   AUDITED_CAPTURABLE_KING_RULE_IDS,
   AUDITED_CAPTURABLE_KING_RULE_IDS_V2,
   AUDITED_CAPTURABLE_KING_RULE_IDS_V3,
+  AUDITED_CAPTURABLE_KING_RULE_IDS_V4,
   isAuditedCapturableKingRuleId,
   isAuditedCapturableKingRuleIdV3,
+  isAuditedCapturableKingRuleIdV4,
   resolveAuditedCapturableKingRule,
   resolveAuditedCapturableKingRuleV3,
+  resolveAuditedCapturableKingRuleV4,
 } from "./audited-capturable-rules.js";
 export type {
   AuditedCapturableKingRuleId,
   AuditedCapturableKingRuleIdV3,
+  AuditedCapturableKingRuleIdV4,
 } from "./audited-capturable-rules.js";
 export {
   areAdjacent,

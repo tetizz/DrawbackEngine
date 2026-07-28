@@ -95,7 +95,8 @@ function allowed<State>(
 }
 
 const stateless = { movesApplied: 0 };
-const authorityAuditedCommunityRules = [
+const statelessAuthorityAuditedCommunityRules = [
+  greedyRule,
   professionalCourtesyRule,
   snipersRule,
   stayAtHomeMomRule,
@@ -107,6 +108,13 @@ const authorityAuditedCommunityRules = [
   indecisiveRule,
   controlCenterRule,
 ] as const;
+const authorityAuditedCommunityRules = [
+  ...statelessAuthorityAuditedCommunityRules,
+  outOfBreathRule,
+  queenBeeRule,
+  alternatorRule,
+  hopscotchRule,
+] as const;
 
 describe("community rule metadata", () => {
   it("registers fifteen executable but unverified rules", () => {
@@ -117,8 +125,9 @@ describe("community rule metadata", () => {
     )).toBe(true);
   });
 
-  it("declares both authorities for exactly the ten audited rules", () => {
+  it("declares both authorities for all fifteen audited rules", () => {
     expect(authorityAuditedCommunityRules.map(({ id }) => id)).toEqual([
+      "greedy",
       "professional-courtesy",
       "snipers",
       "stay-at-home-mom",
@@ -129,6 +138,10 @@ describe("community rule metadata", () => {
       "scent-of-blood",
       "indecisive",
       "control-center",
+      "out-of-breath",
+      "queen-bee",
+      "alternator",
+      "hopscotch",
     ]);
     for (const rule of authorityAuditedCommunityRules) {
       expect(rule.supportedAuthorities).toEqual([
@@ -141,22 +154,11 @@ describe("community rule metadata", () => {
       authorityAuditedCommunityRules.map(({ id }) => id),
     );
     expect(
-      communityRules
-        .filter(({ id }) => !auditedIds.has(id))
-        .map(({ id, supportedAuthorities }) => ({
-          id,
-          supportedAuthorities,
-        })),
-    ).toEqual([
-      { id: "greedy", supportedAuthorities: undefined },
-      { id: "out-of-breath", supportedAuthorities: undefined },
-      { id: "queen-bee", supportedAuthorities: undefined },
-      { id: "alternator", supportedAuthorities: undefined },
-      { id: "hopscotch", supportedAuthorities: undefined },
-    ]);
+      communityRules.filter(({ id }) => !auditedIds.has(id)),
+    ).toEqual([]);
   });
 
-  it.each(authorityAuditedCommunityRules)(
+  it.each(statelessAuthorityAuditedCommunityRules)(
     "$name filters without mutating or aliasing the authority move set",
     (rule) => {
       const moves = Object.freeze([

@@ -47,13 +47,14 @@ This means future forced captures, cooldowns, history restrictions, deadlines,
 and drawback losses are visible to the outer search. Stockfish does not get to
 override the rule engine.
 
-Rules must explicitly declare `capturable-king/v1` support. The audited
-player-private set is Vegan, Lame Duck, Checkers, Truant, Spice of Life,
-Femme Fatale, Nurturer, Triple Play, You Best Not Miss, and Irresistible.
-Unrestricted remains a test control but is not a hidden label. A legacy rule
-with no declaration is rejected at session creation instead of being
-evaluated with accidental `chess.js` assumptions. Broader rule certification
-is part of the remaining migration.
+Rules must explicitly declare `capturable-king/v1` support. The frozen
+player-private v2 vocabulary contains 25 labels. Separate opt-in authority
+compatibility registries contain 37 rules in v3 and 42 rules in v4; those
+larger registries are not silently accepted by v2 traces, simulators, or model
+vocabularies. Unrestricted remains a test control but is not a hidden label. A
+legacy rule with no declaration is rejected at session creation instead of
+being evaluated with accidental `chess.js` assumptions. Broader rule
+certification remains an explicit versioned migration.
 
 ## King capture semantics
 
@@ -221,8 +222,9 @@ the executable session. The orthodox trace version remains unchanged.
 - Add the leakage-checked capturable dataset adapter in DrawbackGuesser before
   these records are accepted into neural-model training.
 - Bind evaluator and hypothesis-manifest digests into trace provenance.
-- Extend the capturable authority audit beyond the initial milestone and five
-  literal-king-capture rules.
+- Extend the capturable authority audit beyond the opt-in 42-rule v4
+  compatibility registry without widening the frozen player-private v2
+  vocabulary.
 - Replace the equal audited prior with a calibrated public Guesser posterior
   after its held-out reliability is adequate.
 - Add evaluator-backed drawbacks without weakening the private capability

@@ -77,6 +77,26 @@ export const AUDITED_CAPTURABLE_KING_RULE_IDS_V3 = Object.freeze([
 export type AuditedCapturableKingRuleIdV3 =
   (typeof AUDITED_CAPTURABLE_KING_RULE_IDS_V3)[number];
 
+/**
+ * Version-four authority compatibility wave.
+ *
+ * Version two remains the player-private wire identity and version three
+ * remains the frozen 37-rule authority compatibility registry. This additive
+ * registry certifies five more existing rules without enrolling them in
+ * either older vocabulary.
+ */
+export const AUDITED_CAPTURABLE_KING_RULE_IDS_V4 = Object.freeze([
+  ...AUDITED_CAPTURABLE_KING_RULE_IDS_V3,
+  "greedy",
+  "out-of-breath",
+  "queen-bee",
+  "alternator",
+  "hopscotch",
+] as const);
+
+export type AuditedCapturableKingRuleIdV4 =
+  (typeof AUDITED_CAPTURABLE_KING_RULE_IDS_V4)[number];
+
 const authorityRules = Object.freeze([
   ...executableRules.filter((rule) =>
     rule.supportedAuthorities?.includes("capturable-king/v1") === true
@@ -88,9 +108,9 @@ const authorityRulesById = new Map(
 );
 
 if (
-  authorityRules.length !== AUDITED_CAPTURABLE_KING_RULE_IDS_V3.length
-  || authorityRulesById.size !== AUDITED_CAPTURABLE_KING_RULE_IDS_V3.length
-  || AUDITED_CAPTURABLE_KING_RULE_IDS_V3.some(
+  authorityRules.length !== AUDITED_CAPTURABLE_KING_RULE_IDS_V4.length
+  || authorityRulesById.size !== AUDITED_CAPTURABLE_KING_RULE_IDS_V4.length
+  || AUDITED_CAPTURABLE_KING_RULE_IDS_V4.some(
     (id) => !authorityRulesById.has(id),
   )
 ) {
@@ -104,6 +124,9 @@ const versionTwoRuleIds = new Set<string>(
 );
 const versionThreeRuleIds = new Set<string>(
   AUDITED_CAPTURABLE_KING_RULE_IDS_V3,
+);
+const versionFourRuleIds = new Set<string>(
+  AUDITED_CAPTURABLE_KING_RULE_IDS_V4,
 );
 
 export function resolveAuditedCapturableKingRule(
@@ -132,6 +155,19 @@ export function resolveAuditedCapturableKingRuleV3(
   return rule;
 }
 
+export function resolveAuditedCapturableKingRuleV4(
+  id: AuditedCapturableKingRuleIdV4,
+): DrawbackRule<unknown, unknown> {
+  if (!versionFourRuleIds.has(id)) {
+    throw new RangeError(`Unknown audited capturable-king v4 rule: ${id}.`);
+  }
+  const rule = authorityRulesById.get(id);
+  if (rule === undefined) {
+    throw new RangeError(`Unknown audited capturable-king v4 rule: ${id}.`);
+  }
+  return rule;
+}
+
 export function isAuditedCapturableKingRuleId(
   value: string,
 ): value is AuditedCapturableKingRuleId {
@@ -142,4 +178,10 @@ export function isAuditedCapturableKingRuleIdV3(
   value: string,
 ): value is AuditedCapturableKingRuleIdV3 {
   return versionThreeRuleIds.has(value);
+}
+
+export function isAuditedCapturableKingRuleIdV4(
+  value: string,
+): value is AuditedCapturableKingRuleIdV4 {
+  return versionFourRuleIds.has(value);
 }
