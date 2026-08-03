@@ -103,6 +103,22 @@ export type {
   PlayerPrivateTrainingProfile,
   PlayerPrivateTrainingScenario,
 } from "./player-private-scenarios.js";
+export {
+  schema9EngineSchedule,
+  SCHEMA9_GENERATOR_CONFIG,
+  SCHEMA9_GENERATOR_COMPLETION_FORMAT,
+  SCHEMA9_GENERATOR_LAUNCH_FORMAT,
+  SCHEMA9_GENERATOR_RECEIPT_VERSION,
+  SCHEMA9_LEDGER_SPLITS,
+  SCHEMA9_SCHEDULE_AUTHORITY_ID,
+  SCHEMA9_SCHEDULE_PROFILE,
+  SCHEMA9_SPLIT_SEED_ROOTS,
+} from "./schema9-schedule.js";
+export type {
+  Schema9EngineSchedule,
+  Schema9LedgerSplit,
+  Schema9SeedRoots,
+} from "./schema9-schedule.js";
 export type { BatchConfig, CatalogBatchConfig } from "./batch.js";
 export {
   CATALOG_AGENT_IDS,

@@ -1,18 +1,11 @@
 import { availableParallelism } from "node:os";
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
-  createPlayerPrivateAssignmentSchedule,
   PLAYER_PRIVATE_DATA_SPLITS,
-  resolvePlayerPrivateTrainingProfile,
-  streamPlayerPrivateAssignmentsParallel,
   type PlayerPrivateDataSplit,
   type PlayerPrivateEvaluatorPolicy,
-  type ScheduledPlayerPrivateAssignment,
 } from "@drawbackengine/simulation-arena";
-import {
-  writePlayerPrivateSplitTraceFileAtomic,
-} from "./player-private-output.js";
+import { runPlayerPrivateBatch } from "./player-private-batch.js";
 import {
   loadPlayerPrivateEvaluatorPolicy,
 } from "./player-private-evaluator-config.js";
@@ -53,73 +46,37 @@ async function main(): Promise<void> {
   const maxDepth = positiveInteger(args[11], 2);
   const maxNodes = positiveInteger(args[12], 50_000);
   const temperatureCp = positiveNumber(args[13], 35);
-  const profile = resolvePlayerPrivateTrainingProfile(
-    args[14] ?? "standard",
-  );
+  const profileId = args[14] ?? "standard";
   const evaluator = await evaluatorPolicy(
     args[15] ?? "material",
     args[16],
     invocationDirectory,
   );
-  const schedule = selectedSplit(
-    createPlayerPrivateAssignmentSchedule({
-      splitCounts,
-      labelSeed,
-      gameplaySeed,
-      parameterSeed,
-      ...(profile.ruleIds === undefined
-        ? {}
-        : { ruleIds: profile.ruleIds }),
-      ...(profile.scenarios === undefined
-        ? {}
-        : {
-            initialFens: profile.scenarios.map(({ fen }) => fen),
-          }),
-    }),
+  const written = await runPlayerPrivateBatch({
     split,
-  );
-  const games = streamPlayerPrivateAssignmentsParallel({
-    assignments: schedule,
+    splitCounts,
     workers,
-    windowSize,
+    labelSeed,
+    gameplaySeed,
+    parameterSeed,
+    outputPath,
     maxPlies,
+    windowSize,
+    maxDepth,
+    maxNodes,
+    temperatureCp,
+    profileId,
+    evaluator,
     signal: termination.signal,
-    policy: {
-      policyId: evaluatorPolicyId(profile.policyId, evaluator),
-      maxDepth,
-      maxNodes,
-      temperatureCp,
-      topK: 8,
-      leafCacheEntries: 16_384,
-      leafCacheHistoryMode: "full",
-      opponentAggregation:
-        profile.opponentAggregation ?? "worst-case",
-      evaluator,
-      opponentHypotheses: {
-        ...(profile.opponentHypotheses ?? {
-          kind: "unrestricted-baseline",
-          version: 1,
-        }),
-      },
+    onProgress: ({ games: recordsWritten, bytes: bytesWritten }) => {
+      console.log(JSON.stringify({
+        kind: "player-private-progress",
+        recordsWritten,
+        totalGames: splitCounts[split],
+        bytesWritten,
+      }));
     },
   });
-  mkdirSync(dirname(outputPath), { recursive: true });
-  const written = await writePlayerPrivateSplitTraceFileAtomic(
-    outputPath,
-    split,
-    games,
-    {
-      signal: termination.signal,
-      onProgress: ({ games: recordsWritten, bytes: bytesWritten }) => {
-        console.log(JSON.stringify({
-          kind: "player-private-progress",
-          recordsWritten,
-          totalGames: splitCounts[split],
-          bytesWritten,
-        }));
-      },
-    },
-  );
   console.log(JSON.stringify({
     kind: "player-private-complete",
     split,
@@ -128,7 +85,7 @@ async function main(): Promise<void> {
     sha256: written.sha256,
     firstGameIndex: written.firstGameIndex,
     lastGameIndex: written.lastGameIndex,
-    evaluatorId: evaluatorId(evaluator),
+    evaluatorId: written.evaluatorId,
   }));
 }
 
@@ -158,34 +115,6 @@ async function evaluatorPolicy(
   return loadPlayerPrivateEvaluatorPolicy(
     resolve(invocationDirectory, configPath),
   );
-}
-
-function evaluatorPolicyId(
-  profilePolicyId: string,
-  evaluator: PlayerPrivateEvaluatorPolicy,
-): string {
-  if (evaluator.kind === "material") {
-    return profilePolicyId;
-  }
-  const profile = profilePolicyId.replace(/^material-/u, "");
-  return `node-uci-${evaluator.config.kind}-${profile}`;
-}
-
-function evaluatorId(evaluator: PlayerPrivateEvaluatorPolicy): string {
-  return evaluator.kind === "material"
-    ? "drawback-material/v1"
-    : evaluator.evaluatorId;
-}
-
-function* selectedSplit(
-  schedule: Iterable<ScheduledPlayerPrivateAssignment>,
-  split: PlayerPrivateDataSplit,
-): Generator<ScheduledPlayerPrivateAssignment> {
-  for (const assignment of schedule) {
-    if (assignment.split === split) {
-      yield assignment;
-    }
-  }
 }
 
 function dataSplit(value: string): PlayerPrivateDataSplit {

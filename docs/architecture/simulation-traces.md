@@ -178,6 +178,12 @@ boundary supplied to DrawbackGuesser, not a model feature and not a field
 inside the engine game record. Global game indexes and independently derived
 gameplay seeds remain disjoint across the three contiguous split ranges.
 
+The separate Schema 9 handoff publishes each frozen Guesser ledger split as
+an authenticated three-file bundle rather than a bare trace. Its fixed seed
+roots, generation configuration, clean-checkout provenance check, exact-byte
+completion receipt, and rollback behavior are specified in
+[`schema9-player-private-bundles.md`](schema9-player-private-bundles.md).
+
 ## Dependency direction
 
 ```text

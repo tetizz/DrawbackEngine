@@ -128,6 +128,29 @@ inside each split, keeps their gameplay seeds disjoint, and streams without
 materializing the corpus in RAM. DrawbackGuesser must convert and validate
 these privileged traces before model training.
 
+For the frozen DrawbackGuesser Schema 9 schedule, use the receipt-producing
+bundle command instead of the positional batch command:
+
+```bash
+pnpm --filter @drawbackengine/cli player-private:schema9 -- \
+  --ledger-split train \
+  --games 25 \
+  --workers 4 \
+  --schedule-id schema9-smoke-v1 \
+  --bundle /trusted/private/schema9/train \
+  --engine-repository /absolute/path/to/DrawbackEngine
+```
+
+Run the same command separately for `validation-a`, `validation-b`, and
+`test`. Each final directory contains `trace.ndjson`, `launch.json`, and
+`completion.json`. The command accepts only a clean executing Engine checkout,
+refuses output inside that checkout, authenticates the completed trace bytes,
+and atomically publishes without clobbering an existing bundle. Create the
+trusted output parent first; symlinked or junction parents are canonicalized
+and cannot redirect private output into the checkout. See
+[`docs/architecture/schema9-player-private-bundles.md`](docs/architecture/schema9-player-private-bundles.md)
+for the frozen schedule, receipt contract, and interruption behavior.
+
 The final two optional values select the leaf evaluator and its private
 configuration. `material` remains the default. `node-uci-leaf` starts one
 authenticated, caller-depth Stockfish or Fairy-Stockfish leaf process per
