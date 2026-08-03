@@ -1,6 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { UciTransport } from "./types.js";
-import { UciProtocolError, UciTimeoutError } from "./types.js";
+import {
+  UciProcessExitError,
+  UciProcessTerminationError,
+  UciTransportError,
+} from "./types.js";
 
 export interface NodeProcessTransportOptions {
   readonly executablePath: string;
@@ -32,6 +36,9 @@ export class NodeProcessUciTransport implements UciTransport {
   #resolveExit: (() => void) | undefined;
   #buffer = "";
   #stderr = "";
+  #closing = false;
+  #spawned = false;
+  #processTerminated = false;
   #ended = false;
   #failure: Error | undefined;
 
@@ -60,25 +67,54 @@ export class NodeProcessUciTransport implements UciTransport {
     });
     this.#process.stdout.setEncoding("utf8");
     this.#process.stderr.setEncoding("utf8");
+    this.#process.stdin.on("error", (error) => {
+      this.#finish(new UciTransportError("UCI process stdin failed.", {
+        cause: error,
+      }));
+    });
+    this.#process.stdout.on("error", (error) => {
+      this.#finish(new UciTransportError("UCI process stdout failed.", {
+        cause: error,
+      }));
+    });
+    this.#process.stderr.on("error", (error) => {
+      this.#finish(new UciTransportError("UCI process stderr failed.", {
+        cause: error,
+      }));
+    });
+    this.#process.once("spawn", () => {
+      this.#spawned = true;
+    });
     this.#process.stdout.on("data", (chunk: string) => {
       this.#consumeStdout(chunk);
     });
     this.#process.stderr.on("data", (chunk: string) => {
       this.#stderr = `${this.#stderr}${chunk}`.slice(-MAX_STDERR_LENGTH);
     });
-    this.#process.once("error", (error) => {
+    this.#process.on("error", (error) => {
+      if (!this.#spawned && this.#process.pid === undefined) {
+        this.#markProcessTerminated();
+      }
       this.#finish(
-        new UciProtocolError(`UCI process failed: ${error.message}`, {
+        new UciTransportError("UCI process transport failed.", {
           cause: error,
         }),
       );
     });
     this.#process.once("exit", (code, signal) => {
+      this.#markProcessTerminated();
       const detail =
-        code === 0
+        this.#closing && code === 0
           ? undefined
-          : new UciProtocolError(
-              `UCI process exited with code ${String(code)} and signal ${String(signal)}${this.#stderr.length === 0 ? "." : `: ${this.#stderr.trim()}`}`,
+          : new UciProcessExitError(
+              `UCI process exited unexpectedly with code ${String(code)} and signal ${String(signal)}.`,
+              this.#stderr.length === 0
+                ? undefined
+                : {
+                    cause: new Error(
+                      `UCI stderr ended with ${String(this.#stderr.length)} bytes.`,
+                    ),
+                  },
             );
       this.#finish(detail);
     });
@@ -87,7 +123,7 @@ export class NodeProcessUciTransport implements UciTransport {
   public send(command: string): Promise<void> {
     if (this.#ended || this.#process.stdin.destroyed) {
       return Promise.reject(
-        this.#failure ?? new UciProtocolError("UCI process is closed."),
+        this.#failure ?? new UciTransportError("UCI process is closed."),
       );
     }
     if (command.length === 0 || command.includes("\n") || command.includes("\r")) {
@@ -95,13 +131,16 @@ export class NodeProcessUciTransport implements UciTransport {
         new RangeError("UCI command must be a non-empty single line."),
       );
     }
+    if (command === "quit") {
+      this.#closing = true;
+    }
     return new Promise((resolve, reject) => {
       this.#process.stdin.write(`${command}\n`, "utf8", (error) => {
         if (error === null || error === undefined) {
           resolve();
         } else {
           reject(
-            new UciProtocolError(`Failed to write UCI command: ${error.message}`, {
+            new UciTransportError("Failed to write a UCI command.", {
               cause: error,
             }),
           );
@@ -119,24 +158,59 @@ export class NodeProcessUciTransport implements UciTransport {
   }
 
   public async close(): Promise<void> {
-    if (this.#ended) {
+    if (this.#processTerminated) {
+      if (this.#failure !== undefined) {
+        throw this.#completedProcessFailure();
+      }
       return;
     }
-    this.#process.stdin.end();
+    this.#closing = true;
+    if (!this.#process.stdin.destroyed) {
+      this.#process.stdin.end();
+    }
+    if (await this.#waitForExit()) {
+      if (this.#failure !== undefined) {
+        throw this.#completedProcessFailure();
+      }
+      return;
+    }
+    const sentTerminate = this.#process.kill("SIGTERM");
+    if (await this.#waitForExit()) {
+      throw new UciProcessTerminationError(
+        `UCI process did not exit within ${String(this.#shutdownTimeoutMs)}ms and required termination.`,
+        true,
+        this.#failure === undefined ? undefined : { cause: this.#failure },
+      );
+    }
+    const sentForcedTermination = this.#process.kill("SIGKILL");
+    if (!(await this.#waitForExit())) {
+      throw new UciProcessTerminationError(
+        sentTerminate || sentForcedTermination
+          ? "UCI process remained alive after bounded forced termination."
+          : "UCI process termination signals could not be delivered and no exit was observed.",
+        false,
+        this.#failure === undefined ? undefined : { cause: this.#failure },
+      );
+    }
+    throw new UciProcessTerminationError(
+      `UCI process did not exit within ${String(this.#shutdownTimeoutMs)}ms and required forced termination.`,
+      true,
+      this.#failure === undefined ? undefined : { cause: this.#failure },
+    );
+  }
+
+  async #waitForExit(): Promise<boolean> {
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<"timeout">((resolve) => {
+    const timedOut = new Promise<false>((resolve) => {
       timeout = setTimeout(() => {
-        resolve("timeout");
+        resolve(false);
       }, this.#shutdownTimeoutMs);
     });
     try {
-      if ((await Promise.race([this.#exit.then(() => "exit" as const), timedOut])) === "timeout") {
-        this.#process.kill();
-        await this.#exit;
-        throw new UciTimeoutError(
-          `UCI process did not exit within ${String(this.#shutdownTimeoutMs)}ms.`,
-        );
-      }
+      return await Promise.race([
+        this.#exit.then(() => true as const),
+        timedOut,
+      ]);
     } finally {
       if (timeout !== undefined) {
         clearTimeout(timeout);
@@ -195,6 +269,22 @@ export class NodeProcessUciTransport implements UciTransport {
         reader.reject(failure);
       }
     }
+  }
+
+  #markProcessTerminated(): void {
+    if (this.#processTerminated) {
+      return;
+    }
+    this.#processTerminated = true;
     this.#resolveExit?.();
+  }
+
+  #completedProcessFailure(): UciProcessExitError {
+    return this.#failure instanceof UciProcessExitError
+      ? this.#failure
+      : new UciProcessExitError(
+          "UCI process terminated after a transport failure.",
+          this.#failure === undefined ? undefined : { cause: this.#failure },
+        );
   }
 }

@@ -1,11 +1,18 @@
 import { randomUUID } from "node:crypto";
 import {
+  createOwnedNodeUciLeafEvaluator,
+  NodeUciLeafEvaluatorCloseError,
+  type OwnedNodeUciLeafEvaluator,
+  throwAfterSameOwnerCleanup,
+} from "@drawbackengine/chess-evaluator";
+import {
   assertPlayerPrivateGameAssignment,
   assertPlayerPrivateSearchPolicy,
   assertPositiveSafeInteger,
   type IndexedPlayerPrivateAssignment,
   type IndexedPlayerPrivateResult,
   type PlayerPrivateSearchPolicy,
+  type PlayerPrivateWorkerSearchPolicy,
 } from "./player-private-parallel-protocol.js";
 import {
   type PlayerPrivateWorkerIdentity,
@@ -22,6 +29,7 @@ import {
   type PlayerPrivateWorkerFactory,
 } from "./player-private-worker-transport.js";
 import {
+  PlayerPrivateWorkerShutdownError,
   PlayerPrivateWorkerSlot,
 } from "./player-private-worker-slot.js";
 
@@ -57,6 +65,62 @@ export interface PlayerPrivateWorkerPool {
   ): Promise<readonly IndexedPlayerPrivateResult[]>;
   diagnostics(): PlayerPrivateWorkerPoolDiagnostics;
   close(): Promise<void>;
+}
+
+/**
+ * Bounded shutdown could not prove that every worker stopped. The retained
+ * cleanup handle retries the same owned slots; it never launches replacements.
+ */
+export class PlayerPrivateWorkerPoolCleanupError extends AggregateError {
+  public constructor(
+    failures: readonly unknown[],
+    message: string,
+    private readonly retryOwnedCleanup: () => Promise<void>,
+    private readonly readDiagnostics: () => PlayerPrivateWorkerPoolDiagnostics,
+    private readonly retainedCleanupIdentity: object = Object.freeze({}),
+  ) {
+    super(failures, message);
+    this.name = "PlayerPrivateWorkerPoolCleanupError";
+  }
+
+  public retryCleanup(): Promise<void> {
+    return this.retryOwnedCleanup();
+  }
+
+  public diagnostics(): PlayerPrivateWorkerPoolDiagnostics {
+    return this.readDiagnostics();
+  }
+
+  public cleanupOwnerIdentity(): object {
+    return this.retainedCleanupIdentity;
+  }
+}
+
+/** Pool initialization failed and its retained slots still need cleanup. */
+export class PlayerPrivateWorkerPoolCreationError
+extends PlayerPrivateWorkerPoolCleanupError {
+  public constructor(
+    initializationFailure: unknown,
+    cleanupFailure: unknown,
+    retryOwnedCleanup: () => Promise<void>,
+    readDiagnostics: () => PlayerPrivateWorkerPoolDiagnostics,
+  ) {
+    super(
+      [
+        initializationFailure,
+        ...(cleanupFailure instanceof PlayerPrivateWorkerPoolCleanupError
+          ? cleanupFailure.errors as readonly unknown[]
+          : [cleanupFailure]),
+      ],
+      "Player-private worker pool initialization failed and cleanup was incomplete.",
+      retryOwnedCleanup,
+      readDiagnostics,
+      cleanupFailure instanceof PlayerPrivateWorkerPoolCleanupError
+        ? cleanupFailure.cleanupOwnerIdentity()
+        : Object.freeze({}),
+    );
+    this.name = "PlayerPrivateWorkerPoolCreationError";
+  }
 }
 
 export async function createPlayerPrivateWorkerPool(
@@ -97,7 +161,22 @@ export async function createPlayerPrivateWorkerPool(
     await pool.initialize();
     return pool;
   } catch (error: unknown) {
-    await pool.close();
+    try {
+      await pool.close();
+    } catch (cleanupFailure: unknown) {
+      if (pool.diagnostics().activeWorkers === 0) {
+        throw new AggregateError(
+          [error, cleanupFailure],
+          "Player-private worker pool initialization and completed cleanup both reported failures.",
+        );
+      }
+      throw new PlayerPrivateWorkerPoolCreationError(
+        error,
+        cleanupFailure,
+        () => pool.close(),
+        () => pool.diagnostics(),
+      );
+    }
     throw error;
   }
 }
@@ -123,6 +202,7 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
   private peakActiveWorkerCount = 0;
   private completedTaskCount = 0;
   private retriedTaskCount = 0;
+  private readonly retainedCleanupIdentity = Object.freeze({});
   private batchInFlight = false;
   private closed = false;
 
@@ -142,12 +222,16 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
       this.startSlotWithRetries(workerId)
     );
     const settled = await Promise.allSettled(starts);
-    const failure = settled.find(
-      (result): result is PromiseRejectedResult =>
-        result.status === "rejected",
+    const failures = settled.flatMap((result) =>
+      result.status === "rejected" ? [result.reason as unknown] : []
     );
-    if (failure !== undefined) {
-      throw failure.reason;
+    if (failures.length > 0) {
+      throw failures.length === 1
+        ? failures[0]
+        : new AggregateError(
+            failures,
+            "Multiple player-private worker slots failed initialization.",
+          );
     }
     settled.forEach((result, workerId) => {
       if (result.status !== "fulfilled") {
@@ -178,13 +262,30 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
     });
     this.batchInFlight = true;
     try {
-      const responses = await Promise.all(
+      const settled = await Promise.allSettled(
         shards.flatMap((games, workerId) =>
           games.length === 0
             ? []
             : [this.executeShard(workerId, games)]
         ),
       );
+      const failures = settled.flatMap((result) =>
+        result.status === "rejected" ? [result.reason as unknown] : []
+      );
+      if (failures.length > 0) {
+        throw failures.length === 1
+          ? failures[0]
+          : new AggregateError(
+              failures,
+              "Multiple player-private worker shards failed.",
+            );
+      }
+      const responses = settled.map((result) => {
+        if (result.status !== "fulfilled") {
+          throw new Error("Player-private worker shard settlement was lost.");
+        }
+        return result.value;
+      });
       const indexed = responses
         .flat()
         .sort((left, right) => left.gameIndex - right.gameIndex);
@@ -224,15 +325,68 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
     }
     this.closed = true;
     const slots = [...this.liveSlots];
-    await Promise.allSettled(
+    const graceful = await Promise.allSettled(
       slots.map((slot) =>
         slot.closeGracefully(this.options.shutdownTimeoutMs)
       ),
     );
-    await Promise.allSettled(
-      [...this.liveSlots].map((slot) => slot.terminateNow()),
+    const shutdownFailures: unknown[] = [];
+    const retryableGracefulFailures = new Map<
+      PlayerPrivateWorkerSlot,
+      unknown
+    >();
+    graceful.forEach((result, index) => {
+      if (result.status !== "rejected") {
+        return;
+      }
+      const slot = slots[index];
+      if (
+        result.reason instanceof PlayerPrivateWorkerShutdownError
+        || (slot !== undefined && !this.liveSlots.has(slot))
+      ) {
+        shutdownFailures.push(result.reason);
+      } else if (slot !== undefined) {
+        retryableGracefulFailures.set(slot, result.reason as unknown);
+      }
+    });
+    const forceableSlots = [...this.liveSlots];
+    const forced = await Promise.allSettled(
+      forceableSlots.map((slot) => slot.terminateNow()),
     );
     this.slots.fill(undefined);
+    const failures: unknown[] = [...shutdownFailures];
+    forced.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const slot = forceableSlots[index];
+        const gracefulFailure = slot === undefined
+          ? undefined
+          : retryableGracefulFailures.get(slot);
+        if (gracefulFailure !== undefined) {
+          failures.push(gracefulFailure);
+        }
+        failures.push(result.reason as unknown);
+      }
+    });
+    if (this.liveSlots.size > 0 && failures.length === 0) {
+      failures.push(
+        new Error("One or more player-private workers remain active."),
+      );
+    }
+    if (failures.length > 0) {
+      if (this.liveSlots.size === 0) {
+        throw new AggregateError(
+          failures,
+          "Player-private worker pool cleanup completed abnormally.",
+        );
+      }
+      throw new PlayerPrivateWorkerPoolCleanupError(
+        failures,
+        "Player-private worker pool cleanup failed.",
+        () => this.close(),
+        () => this.diagnostics(),
+        this.retainedCleanupIdentity,
+      );
+    }
   }
 
   private async executeShard(
@@ -266,7 +420,16 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
           return response.games;
         } catch (error: unknown) {
           if (isTransientParallelWorkerError(error)) {
-            await slot.terminateNow();
+            try {
+              await slot.closeGracefully(
+                this.options.shutdownTimeoutMs,
+              );
+            } catch (cleanupFailure: unknown) {
+              throw new AggregateError(
+                [error, cleanupFailure],
+                "Transient player-private task failure was not followed by authenticated worker cleanup.",
+              );
+            }
             if (this.slots[workerId] === slot) {
               this.slots[workerId] = undefined;
             }
@@ -320,43 +483,186 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
       schemaVersion: 2,
       kind: "player-private-worker-initialize",
       ...identity,
-      policy: this.options.policy,
+      policy: workerSearchPolicy(this.options.policy),
       ...(this.options.maxPlies === undefined
         ? {}
         : { maxPlies: this.options.maxPlies }),
     } satisfies PlayerPrivateWorkerInitialization);
+    const hostedEvaluator = await this.createHostedEvaluator();
+    if (this.poolIsClosed()) {
+      const closedDuringEvaluatorCreation = new Error(
+        "Player-private worker pool closed during evaluator creation.",
+      );
+      if (hostedEvaluator === undefined) {
+        throw closedDuringEvaluatorCreation;
+      }
+      return throwAfterSameOwnerCleanup(
+        closedDuringEvaluatorCreation,
+        () => hostedEvaluator.close(),
+        "Pool closure raced evaluator creation and parent-owned UCI cleanup encountered failures.",
+        leafEvaluatorCleanupProvesComplete,
+      );
+    }
     this.launchCount += 1;
-    const transport = this.options.workerFactory({
-      entry: workerEntry(),
-      workerData: initialization,
-      execArgv: import.meta.url.endsWith(".ts")
-        ? ["--import", sourceLoader()]
-        : [],
-    });
+    let transport: ReturnType<PlayerPrivateWorkerFactory>;
+    try {
+      transport = this.options.workerFactory({
+        entry: workerEntry(),
+        workerData: initialization,
+        execArgv: import.meta.url.endsWith(".ts")
+          ? ["--import", sourceLoader()]
+          : [],
+      });
+    } catch (error: unknown) {
+      if (hostedEvaluator === undefined) {
+        throw error;
+      }
+      return throwAfterSameOwnerCleanup(
+        error,
+        () => hostedEvaluator.close(),
+        "Worker launch failed and parent-owned UCI cleanup encountered failures.",
+        leafEvaluatorCleanupProvesComplete,
+      );
+    }
+    let slot: PlayerPrivateWorkerSlot | undefined;
+    try {
+      slot = new PlayerPrivateWorkerSlot(
+        identity,
+        transport,
+        this.options.initializationTimeoutMs,
+        evaluatorId(this.options.policy),
+        () => {
+          if (slot !== undefined && this.liveSlots.delete(slot)) {
+            this.activeWorkerCount -= 1;
+          }
+        },
+        hostedEvaluator,
+      );
+    } catch (error: unknown) {
+      const cleanup = provisionalWorkerCleanup(transport, hostedEvaluator);
+      return throwAfterSameOwnerCleanup(
+        error,
+        cleanup.close,
+        "Worker slot construction failed and provisional resource cleanup encountered failures.",
+        cleanup.provesComplete,
+      );
+    }
     this.activeWorkerCount += 1;
     this.peakActiveWorkerCount = Math.max(
       this.peakActiveWorkerCount,
       this.activeWorkerCount,
-    );
-    const slot = new PlayerPrivateWorkerSlot(
-      identity,
-      transport,
-      this.options.initializationTimeoutMs,
-      () => {
-        if (this.liveSlots.delete(slot)) {
-          this.activeWorkerCount -= 1;
-        }
-      },
     );
     this.liveSlots.add(slot);
     try {
       await slot.initialize();
       return slot;
     } catch (error: unknown) {
-      await slot.terminateNow();
+      try {
+        await slot.terminateNow();
+      } catch (cleanupFailure: unknown) {
+        throw new AggregateError(
+          [error, cleanupFailure],
+          "Player-private worker initialization and cleanup both failed.",
+        );
+      }
       throw error;
     }
   }
+
+  private async createHostedEvaluator(): Promise<
+    OwnedNodeUciLeafEvaluator | undefined
+  > {
+    if (this.options.policy.evaluator.kind === "material") {
+      return undefined;
+    }
+    const evaluator = await createOwnedNodeUciLeafEvaluator(
+      this.options.policy.evaluator.config,
+    );
+    if (evaluator.id !== this.options.policy.evaluator.evaluatorId) {
+      return throwAfterSameOwnerCleanup(
+        new Error("Parent-owned UCI evaluator identity is invalid."),
+        () => evaluator.close(),
+        "UCI evaluator identity rejection and cleanup encountered failures.",
+        leafEvaluatorCleanupProvesComplete,
+      );
+    }
+    return evaluator;
+  }
+
+  private poolIsClosed(): boolean {
+    return this.closed;
+  }
+}
+
+function leafEvaluatorCleanupProvesComplete(error: unknown): boolean {
+  return error instanceof NodeUciLeafEvaluatorCloseError
+    && error.privateResourcesRemoved
+    && error.processTerminated;
+}
+
+function provisionalWorkerCleanup(
+  transport: ReturnType<PlayerPrivateWorkerFactory>,
+  hostedEvaluator: OwnedNodeUciLeafEvaluator | undefined,
+): {
+  readonly close: () => Promise<void>;
+  readonly provesComplete: () => boolean;
+} {
+  let transportTerminated = false;
+  let evaluatorClosed = hostedEvaluator === undefined;
+  const close = async (): Promise<void> => {
+    const [transportResult, evaluatorResult] = await Promise.allSettled([
+      transportTerminated
+        ? Promise.resolve()
+        : Promise.resolve().then(() => transport.terminate()),
+      evaluatorClosed
+        ? Promise.resolve()
+        : Promise.resolve().then(() => hostedEvaluator?.close()),
+    ]);
+    const failures: unknown[] = [];
+    if (transportResult.status === "fulfilled") {
+      transportTerminated = true;
+    } else {
+      failures.push(transportResult.reason as unknown);
+    }
+    if (evaluatorResult.status === "fulfilled") {
+      evaluatorClosed = true;
+    } else {
+      const evaluatorFailure = evaluatorResult.reason as unknown;
+      evaluatorClosed = leafEvaluatorCleanupProvesComplete(evaluatorFailure);
+      failures.push(evaluatorFailure);
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        "Provisional player-private worker resource cleanup reported failures.",
+      );
+    }
+  };
+  return {
+    close,
+    provesComplete: () => transportTerminated && evaluatorClosed,
+  };
+}
+
+function workerSearchPolicy(
+  policy: PlayerPrivateSearchPolicy,
+): PlayerPrivateWorkerSearchPolicy {
+  return freezeRecursively({
+    ...policy,
+    evaluator: policy.evaluator.kind === "material"
+      ? policy.evaluator
+      : {
+          kind: policy.evaluator.kind,
+          version: policy.evaluator.version,
+          evaluatorId: policy.evaluator.evaluatorId,
+        },
+  } satisfies PlayerPrivateWorkerSearchPolicy);
+}
+
+function evaluatorId(policy: PlayerPrivateSearchPolicy): string {
+  return policy.evaluator.kind === "material"
+    ? "drawback-material/v1"
+    : policy.evaluator.evaluatorId;
 }
 
 function validateAndSnapshotAssignments(
@@ -395,6 +701,9 @@ function validateAndSnapshotAssignments(
 
 function freezeRecursively<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  if (ArrayBuffer.isView(value)) {
     return value;
   }
   for (const child of Object.values(value)) {

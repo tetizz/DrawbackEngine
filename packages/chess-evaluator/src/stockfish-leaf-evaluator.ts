@@ -81,7 +81,9 @@ async function evaluateWithStockfish(
       "Stockfish cannot evaluate a leaf whose exact drawback move set contains non-orthodox moves.",
     );
   }
-  await options.client.reset();
+  await options.client.reset(
+    signal === undefined ? {} : { signal },
+  );
   const evaluation = await options.client.evaluateFen(
     position.fen,
     { depth: options.depth },
@@ -96,6 +98,19 @@ async function evaluateWithStockfish(
   if (evaluation.score.bound !== "exact") {
     throw new StockfishLeafEvaluatorError(
       `Stockfish returned a ${evaluation.score.bound} bound instead of an exact leaf score.`,
+    );
+  }
+  if (evaluation.bestMove === null) {
+    throw new StockfishLeafEvaluatorError(
+      "Stockfish returned no move for a non-terminal exact leaf request.",
+    );
+  }
+  if (
+    evaluation.depth === null
+    || evaluation.depth < options.depth
+  ) {
+    throw new StockfishLeafEvaluatorError(
+      "Stockfish did not complete the requested fixed-depth leaf search.",
     );
   }
   return normalizeScore(evaluation.score);

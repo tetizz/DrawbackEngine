@@ -102,7 +102,14 @@ process.stdin.on("data", (chunk) => {
       }
     } else if (command === "quit") {
       if (chatter !== null) clearInterval(chatter);
-      fs.writeFileSync(marker, JSON.stringify(commands));
+      fs.writeFileSync(
+        marker,
+        JSON.stringify(
+          mode === "record-executable"
+            ? { commands, executablePath: process.execPath }
+            : commands,
+        ),
+      );
       process.exit(0);
     }
   }
@@ -173,6 +180,7 @@ function fixture(
       args: ["-e", ENGINE, marker, "Pinned Engine 17.1", kind, mode],
       cwd: process.cwd(),
       shutdownTimeoutMs: 2_000,
+      runtimeContextSha256: "b".repeat(64),
     },
     client: { timeoutMs: mode === "chatter" ? 1_000 : 2_000 },
     engineIdentity: {
@@ -347,11 +355,48 @@ describe("createOwnedNodeUciLeafEvaluator", () => {
     );
   });
 
-  it("purely derives path-free IDs that bind args, cwd, and runtime deadlines", async () => {
+  it("spawns the authenticated private copy and removes it after close", async () => {
+    const prepared = fixture("stockfish", "record-executable");
+    const evaluator = await createOwnedNodeUciLeafEvaluator(
+      prepared.config,
+    );
+
+    await evaluator.close();
+    const recorded = JSON.parse(
+      await readFile(prepared.marker, "utf8"),
+    ) as {
+      readonly commands: readonly string[];
+      readonly executablePath: string;
+    };
+    expect(recorded.commands).toContain("quit");
+    expect(recorded.executablePath).not.toBe(process.execPath);
+    await expect(readFile(recorded.executablePath)).rejects.toThrow();
+  });
+
+  it("removes the authenticated Fairy executable copy after close", async () => {
+    const prepared = await fairyFixture("record-executable");
+    const evaluator = await createOwnedNodeUciLeafEvaluator(
+      prepared.config,
+    );
+
+    await evaluator.close();
+    const recorded = JSON.parse(
+      await readFile(prepared.marker, "utf8"),
+    ) as {
+      readonly commands: readonly string[];
+      readonly executablePath: string;
+    };
+    expect(recorded.commands).toContain("quit");
+    expect(recorded.executablePath).not.toBe(process.execPath);
+    await expect(readFile(recorded.executablePath)).rejects.toThrow();
+  });
+
+  it("derives host-independent IDs while binding arguments and runtime context", async () => {
     const prepared = fixture();
     const firstId = deriveNodeUciLeafEvaluatorId(prepared.config);
     const privateArgument = "--private-runtime-selector";
     const privateCwd = join(tmpdir(), "private-runtime-cwd");
+    const privateExecutable = join(tmpdir(), "private-runtime-engine");
     const changedArgsId = deriveNodeUciLeafEvaluatorId({
       ...prepared.config,
       process: {
@@ -364,6 +409,13 @@ describe("createOwnedNodeUciLeafEvaluator", () => {
       process: {
         ...prepared.config.process,
         cwd: privateCwd,
+      },
+    });
+    const changedExecutableId = deriveNodeUciLeafEvaluatorId({
+      ...prepared.config,
+      process: {
+        ...prepared.config.process,
+        executablePath: privateExecutable,
       },
     });
     const changedShutdownId = deriveNodeUciLeafEvaluatorId({
@@ -380,28 +432,52 @@ describe("createOwnedNodeUciLeafEvaluator", () => {
         timeoutMs: prepared.config.client.timeoutMs + 1,
       },
     });
+    const changedRuntimeContextId = deriveNodeUciLeafEvaluatorId({
+      ...prepared.config,
+      process: {
+        ...prepared.config.process,
+        runtimeContextSha256: "c".repeat(64),
+      },
+    });
 
-    expect(new Set([
-      firstId,
-      changedArgsId,
-      changedCwdId,
-      changedShutdownId,
-      changedClientId,
-    ]).size).toBe(5);
+    expect(changedArgsId).not.toBe(firstId);
+    expect(changedCwdId).toBe(firstId);
+    expect(changedExecutableId).toBe(firstId);
+    expect(changedShutdownId).toBe(firstId);
+    expect(changedClientId).toBe(firstId);
+    expect(changedRuntimeContextId).not.toBe(firstId);
     for (const id of [
       firstId,
       changedArgsId,
       changedCwdId,
+      changedExecutableId,
       changedShutdownId,
       changedClientId,
+      changedRuntimeContextId,
     ]) {
       expect(id).toMatch(/^node-uci-leaf\/v1\/[0-9a-f]{64}$/u);
       expect(id).not.toContain(prepared.config.process.executablePath);
       expect(id).not.toContain(prepared.marker);
       expect(id).not.toContain(privateArgument);
       expect(id).not.toContain(privateCwd);
+      expect(id).not.toContain(privateExecutable);
     }
     await expect(readFile(prepared.marker)).rejects.toThrow();
+  });
+
+  it("requires a caller-pinned runtime context digest", () => {
+    const prepared = fixture();
+    const invalid = {
+      ...prepared.config,
+      process: {
+        ...prepared.config.process,
+        runtimeContextSha256: "not-a-digest",
+      },
+    } as NodeUciLeafEvaluatorConfig;
+
+    expect(() => deriveNodeUciLeafEvaluatorId(invalid)).toThrow(
+      "runtime context SHA-256",
+    );
   });
 
   it("fails closed when a required fixed option is absent", async () => {

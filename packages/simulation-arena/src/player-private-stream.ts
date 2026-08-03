@@ -22,6 +22,7 @@ export interface PlayerPrivateAssignmentStreamRequest {
   readonly policy: PlayerPrivateSearchPolicy;
   readonly maxPlies?: number;
   readonly windowSize?: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface StreamedPlayerPrivateResult
@@ -54,6 +55,7 @@ export function streamPlayerPrivateAssignmentsParallel(
     policy,
     windowSize,
     request.maxPlies,
+    request.signal,
   );
 }
 
@@ -63,13 +65,23 @@ async function* streamWindows(
   policy: PlayerPrivateSearchPolicy,
   windowSize: number,
   maxPlies?: number,
+  signal?: AbortSignal,
 ): AsyncGenerator<StreamedPlayerPrivateResult> {
   let previous: ScheduledPlayerPrivateAssignment | undefined;
   let pool: PlayerPrivateWorkerPool | undefined;
+  let streamFailed = false;
+  let streamFailure: unknown;
+  let poolCleanup: Promise<void> | undefined;
+  const closePool = (): Promise<void> => {
+    poolCleanup ??= Promise.resolve().then(() => pool?.close());
+    return poolCleanup;
+  };
   try {
     for (;;) {
+      throwIfAborted(signal);
       const window: ScheduledPlayerPrivateAssignment[] = [];
       while (window.length < windowSize) {
+        throwIfAborted(signal);
         const next = iterator.next();
         if (next.done === true) {
           break;
@@ -87,12 +99,17 @@ async function* streamWindows(
         policy,
         ...(maxPlies === undefined ? {} : { maxPlies }),
       });
+      throwIfAborted(signal);
       let results: ReadonlyMap<number, PlayerPrivateSimulationResult>;
       try {
-        const indexed = await pool.runBatch(
-          window.map(({ globalIndex, assignment }) =>
-            Object.freeze({ gameIndex: globalIndex, assignment })
+        const indexed = await runBatchAbortably(
+          pool.runBatch(
+            window.map(({ globalIndex, assignment }) =>
+              Object.freeze({ gameIndex: globalIndex, assignment })
+            ),
           ),
+          signal,
+          closePool,
         );
         results = new Map(
           indexed.map(({ gameIndex, result }) => [gameIndex, result]),
@@ -120,6 +137,7 @@ async function* streamWindows(
         );
       }
       for (const scheduled of window) {
+        throwIfAborted(signal);
         const result = results.get(scheduled.globalIndex);
         if (result === undefined) {
           throw new Error("Player-private stream lost a scheduled result.");
@@ -130,13 +148,118 @@ async function* streamWindows(
         });
       }
     }
+  } catch (error: unknown) {
+    streamFailed = true;
+    streamFailure = error;
+    throw error;
   } finally {
-    try {
-      await pool?.close();
-    } finally {
-      iterator.return?.();
-    }
+    await finishStreamCleanup(
+      closePool,
+      iterator,
+      streamFailed,
+      streamFailure,
+    );
   }
+}
+
+async function finishStreamCleanup(
+  closePool: () => Promise<void>,
+  iterator: Iterator<ScheduledPlayerPrivateAssignment>,
+  streamFailed: boolean,
+  streamFailure: unknown,
+): Promise<void> {
+  const cleanupFailures: unknown[] = [];
+  try {
+    await closePool();
+  } catch (error: unknown) {
+    cleanupFailures.push(error);
+  }
+  try {
+    iterator.return?.();
+  } catch (error: unknown) {
+    cleanupFailures.push(error);
+  }
+  if (cleanupFailures.length > 0) {
+    throw new AggregateError(
+      streamFailed
+        ? [streamFailure, ...cleanupFailures]
+        : cleanupFailures,
+      streamFailed
+        ? "Player-private streaming and retained cleanup both failed."
+        : "Player-private stream cleanup failed.",
+    );
+  }
+}
+
+function runBatchAbortably<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined,
+  closePool: () => Promise<void>,
+): Promise<T> {
+  if (signal === undefined) {
+    return operation;
+  }
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const onAbort = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      const interruption = abortReason(signal);
+      void Promise.allSettled([operation, closePool()]).then((results) => {
+        const failures: unknown[] = [interruption];
+        for (const result of results) {
+          if (result.status === "rejected") {
+            failures.push(result.reason as unknown);
+          }
+        }
+        reject(failures.length === 1
+          ? interruption
+          : new AggregateError(
+              failures,
+              "Player-private stream interruption cleanup failed.",
+            ));
+      });
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+    }
+    void operation.then(
+      (value) => {
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          resolve(value);
+        }
+      },
+      (error: unknown) => {
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          reject(error instanceof Error
+            ? error
+            : new Error("Player-private batch failed.", { cause: error }));
+        }
+      },
+    );
+  });
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw abortReason(signal);
+  }
+}
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Player-private stream was interrupted.", {
+        cause: signal.reason,
+      });
 }
 
 function assertScheduledAssignment(
@@ -182,6 +305,9 @@ function assertScheduledAssignment(
 
 function freezeRecursively<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  if (ArrayBuffer.isView(value)) {
     return value;
   }
   for (const child of Object.values(value)) {

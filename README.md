@@ -128,6 +128,26 @@ inside each split, keeps their gameplay seeds disjoint, and streams without
 materializing the corpus in RAM. DrawbackGuesser must convert and validate
 these privileged traces before model training.
 
+The final two optional values select the leaf evaluator and its private
+configuration. `material` remains the default. `node-uci-leaf` starts one
+authenticated, caller-depth Stockfish or Fairy-Stockfish leaf process per
+parent-owned simulation slot:
+
+```bash
+pnpm --filter @drawbackengine/cli player-private:batch -- \
+  train 1000 200 200 8 448663553 1785536514 2586451971 \
+  /trusted/output/player-private-train.ndjson \
+  120 32 2 50000 35 standard node-uci-leaf \
+  /trusted/config/stockfish.json
+```
+
+The configuration and binaries stay outside the repository. The executable
+bytes, UCI identity, advertised options, fixed strength-related UCI settings,
+and search depth are authenticated before use; there is no silent material
+fallback. Progress and completion are emitted as path-free JSON. See
+[`docs/architecture/player-private-uci-workers.md`](docs/architecture/player-private-uci-workers.md)
+for the exact schema, lifecycle, and fail-closed limitations.
+
 The `king-capture-diagnostics-v1` profile restricts labels to the five audited
 king-capture drawbacks and starts from eight public, symmetric diagnostic
 positions:
@@ -184,7 +204,11 @@ pnpm --filter @drawbackengine/cli oracle:move -- \
 
 The current oracle command demonstrates a Vegan-versus-Checkers game and
 prints its fixed knowledge mode. It refuses to run unless the supplied engine
-binary matches the expected SHA-256 digest.
+binary matches the expected SHA-256 digest. It is a local demonstration CLI,
+not the authenticated simulation runner: it does not stage a private executable
+copy or pin the engine's advertised UCI option surface. Run it only from a
+trusted path that cannot change after verification. Use `player-private:batch`
+with `node-uci-leaf` for authenticated, long-running simulation work.
 
 Use `--engine-kind fairy-stockfish` together with
 `--variant-path data/catalog/drawbackchess-fairy-v1.ini` for the optional Fairy

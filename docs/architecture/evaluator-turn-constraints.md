@@ -230,7 +230,11 @@ The fingerprint covers:
 - exact engine binary or WASM SHA-256;
 - engine-reported name and version;
 - evaluator adapter schema version;
-- all required UCI options and their values;
+- the exact ordered advertised UCI option surface;
+- the actual ordered UCI settings requested by the provider, independently of
+  the caller's policy digest;
+- a caller-pinned runtime-manifest digest covering semantic process arguments
+  and every evaluation-affecting file resolved from the working directory;
 - search-limit kind and value;
 - root-move ordering rule;
 - FEN normalization rule;
@@ -367,11 +371,13 @@ The current asynchronous agent path is not sufficient: agents can await move
 selection, but the current session still calculates legality synchronously.
 Evaluator-backed games must use the asynchronous prepared session.
 
-Each simulation worker owns its provider lifecycle. Worker requests contain only
-serializable policy IDs and trusted evaluator configuration references, never a
-live client. A worker initializes one provider, calls the deterministic reset
-sequence for every uncached position, and disposes it on normal completion,
-abort, and error.
+The parent process owns every provider lifecycle and private executable
+configuration. Worker requests contain only serializable public policy and
+evaluator identities; worker protocol validation rejects executable paths,
+process arguments, environment details, and evaluator configuration. Workers
+send public position requests to the parent-owned provider, which performs the
+deterministic reset sequence for every uncached position and is disposed on
+normal completion, abort, and error.
 
 Game seeds continue to determine drawback choice, parameters, bot behavior, and
 temperature sampling. Evaluator output is not randomized and consumes no game

@@ -7,11 +7,23 @@ import {
   resolvePlayerPrivateTrainingProfile,
   streamPlayerPrivateAssignmentsParallel,
   type PlayerPrivateDataSplit,
+  type PlayerPrivateEvaluatorPolicy,
   type ScheduledPlayerPrivateAssignment,
 } from "@drawbackengine/simulation-arena";
 import {
   writePlayerPrivateSplitTraceFileAtomic,
 } from "./player-private-output.js";
+import {
+  loadPlayerPrivateEvaluatorPolicy,
+} from "./player-private-evaluator-config.js";
+import { redactLocalPaths } from "./failure-redaction.js";
+import { retryRetainedCleanup } from "./retained-cleanup.js";
+import {
+  findCleanupTerminationError,
+  installTerminationSignal,
+} from "./termination-signal.js";
+
+const termination = installTerminationSignal();
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2).filter((argument) => argument !== "--");
@@ -44,6 +56,11 @@ async function main(): Promise<void> {
   const profile = resolvePlayerPrivateTrainingProfile(
     args[14] ?? "standard",
   );
+  const evaluator = await evaluatorPolicy(
+    args[15] ?? "material",
+    args[16],
+    invocationDirectory,
+  );
   const schedule = selectedSplit(
     createPlayerPrivateAssignmentSchedule({
       splitCounts,
@@ -66,8 +83,9 @@ async function main(): Promise<void> {
     workers,
     windowSize,
     maxPlies,
+    signal: termination.signal,
     policy: {
-      policyId: profile.policyId,
+      policyId: evaluatorPolicyId(profile.policyId, evaluator),
       maxDepth,
       maxNodes,
       temperatureCp,
@@ -76,7 +94,7 @@ async function main(): Promise<void> {
       leafCacheHistoryMode: "full",
       opponentAggregation:
         profile.opponentAggregation ?? "worst-case",
-      evaluator: { kind: "material", version: 1 },
+      evaluator,
       opponentHypotheses: {
         ...(profile.opponentHypotheses ?? {
           kind: "unrestricted-baseline",
@@ -90,13 +108,73 @@ async function main(): Promise<void> {
     outputPath,
     split,
     games,
+    {
+      signal: termination.signal,
+      onProgress: ({ games: recordsWritten, bytes: bytesWritten }) => {
+        console.log(JSON.stringify({
+          kind: "player-private-progress",
+          recordsWritten,
+          totalGames: splitCounts[split],
+          bytesWritten,
+        }));
+      },
+    },
   );
-  console.log(
-    `Wrote ${String(written.games)} ${split} player-private traces `
-      + `(${String(written.bytes)} bytes, sha256 ${written.sha256}) `
-      + `for global indexes ${String(written.firstGameIndex)}-`
-      + `${String(written.lastGameIndex)} to ${outputPath}`,
+  console.log(JSON.stringify({
+    kind: "player-private-complete",
+    split,
+    games: written.games,
+    bytes: written.bytes,
+    sha256: written.sha256,
+    firstGameIndex: written.firstGameIndex,
+    lastGameIndex: written.lastGameIndex,
+    evaluatorId: evaluatorId(evaluator),
+  }));
+}
+
+async function evaluatorPolicy(
+  mode: string,
+  configPath: string | undefined,
+  invocationDirectory: string,
+): Promise<PlayerPrivateEvaluatorPolicy> {
+  if (mode === "material") {
+    if (configPath !== undefined) {
+      throw new RangeError(
+        "Material evaluator mode does not accept a configuration file.",
+      );
+    }
+    return { kind: "material", version: 1 };
+  }
+  if (mode !== "node-uci-leaf") {
+    throw new RangeError(
+      "Evaluator mode must be material or node-uci-leaf.",
+    );
+  }
+  if (configPath === undefined) {
+    throw new RangeError(
+      "node-uci-leaf mode requires a private evaluator configuration.",
+    );
+  }
+  return loadPlayerPrivateEvaluatorPolicy(
+    resolve(invocationDirectory, configPath),
   );
+}
+
+function evaluatorPolicyId(
+  profilePolicyId: string,
+  evaluator: PlayerPrivateEvaluatorPolicy,
+): string {
+  if (evaluator.kind === "material") {
+    return profilePolicyId;
+  }
+  const profile = profilePolicyId.replace(/^material-/u, "");
+  return `node-uci-${evaluator.config.kind}-${profile}`;
+}
+
+function evaluatorId(evaluator: PlayerPrivateEvaluatorPolicy): string {
+  return evaluator.kind === "material"
+    ? "drawback-material/v1"
+    : evaluator.evaluatorId;
 }
 
 function* selectedSplit(
@@ -169,9 +247,22 @@ function unsignedSeed(
   return parsed;
 }
 
-void main().catch((error: unknown) => {
-  const message =
-    error instanceof Error ? error.message : "Unknown player-private error.";
-  console.error(`Player-private batch failed: ${message}`);
-  process.exitCode = 1;
+void main().catch(async (error: unknown) => {
+  const reported = await retryRetainedPoolCleanup(error);
+  const message = redactLocalPaths(
+    reported instanceof Error
+      ? reported.message
+      : "Unknown player-private error.",
+  );
+  console.error(JSON.stringify({
+    kind: "player-private-failure",
+    message,
+  }));
+  process.exitCode = findCleanupTerminationError(reported)?.exitCode ?? 1;
+}).finally(() => {
+  termination.dispose();
 });
+
+async function retryRetainedPoolCleanup(error: unknown): Promise<unknown> {
+  return retryRetainedCleanup(error, 2);
+}

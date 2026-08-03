@@ -1,12 +1,12 @@
 import {
   assertExactKeys,
   assertPlayerPrivateGameAssignment,
-  assertPlayerPrivateSearchPolicy,
+  assertPlayerPrivateWorkerSearchPolicy,
   assertPositiveSafeInteger,
   protocolRecord,
   type IndexedPlayerPrivateAssignment,
   type IndexedPlayerPrivateResult,
-  type PlayerPrivateSearchPolicy,
+  type PlayerPrivateWorkerSearchPolicy,
 } from "./player-private-parallel-protocol.js";
 
 export interface PlayerPrivateWorkerIdentity {
@@ -20,7 +20,7 @@ export interface PlayerPrivateWorkerInitialization
 extends PlayerPrivateWorkerIdentity {
   readonly schemaVersion: 2;
   readonly kind: "player-private-worker-initialize";
-  readonly policy: PlayerPrivateSearchPolicy;
+  readonly policy: PlayerPrivateWorkerSearchPolicy;
   readonly maxPlies?: number;
 }
 
@@ -28,6 +28,18 @@ export interface PlayerPrivateWorkerReady
 extends PlayerPrivateWorkerIdentity {
   readonly schemaVersion: 2;
   readonly kind: "player-private-worker-ready";
+  readonly evaluatorId: string;
+}
+
+export interface PlayerPrivateWorkerInitializationFailure
+extends PlayerPrivateWorkerIdentity {
+  readonly schemaVersion: 2;
+  readonly kind: "player-private-worker-initialization-failure";
+  readonly failure: {
+    readonly code: "initialization-failed" | "evaluator-unavailable";
+    readonly transient: boolean;
+    readonly message: string;
+  };
 }
 
 export interface PlayerPrivateWorkerTask
@@ -79,6 +91,7 @@ export type PlayerPrivateWorkerParentMessage =
 
 export type PlayerPrivateWorkerChildMessage =
   | PlayerPrivateWorkerReady
+  | PlayerPrivateWorkerInitializationFailure
   | PlayerPrivateWorkerTaskResult
   | PlayerPrivateWorkerTaskFailure
   | PlayerPrivateWorkerStopped;
@@ -93,7 +106,7 @@ export function assertPlayerPrivateWorkerInitialization(
   const expected = [
     "schemaVersion",
     "kind",
-    ...WORKER_IDENTITY_KEYS,
+    ...PLAYER_PRIVATE_WORKER_IDENTITY_KEYS,
     "policy",
   ];
   if (initialization["maxPlies"] !== undefined) {
@@ -117,19 +130,87 @@ export function assertPlayerPrivateWorkerInitialization(
     );
   }
   assertPlayerPrivateWorkerIdentity(initialization);
-  assertPlayerPrivateSearchPolicy(initialization["policy"]);
+  assertPlayerPrivateWorkerSearchPolicy(initialization["policy"]);
 }
 
 export function assertPlayerPrivateWorkerReady(
   value: unknown,
   expectedIdentity: PlayerPrivateWorkerIdentity,
+  expectedEvaluatorId: string,
 ): asserts value is PlayerPrivateWorkerReady {
-  assertIdentityOnlyMessage(
+  const ready = protocolRecord(
     value,
-    "player-private-worker-ready",
     "player-private worker ready response",
-    expectedIdentity,
   );
+  assertExactKeys(
+    ready,
+    ["schemaVersion", "kind", ...PLAYER_PRIVATE_WORKER_IDENTITY_KEYS, "evaluatorId"],
+    "player-private worker ready response",
+  );
+  if (
+    ready["schemaVersion"] !== 2
+    || ready["kind"] !== "player-private-worker-ready"
+    || ready["evaluatorId"] !== expectedEvaluatorId
+  ) {
+    throw new TypeError(
+      "Player-private worker ready evaluator identity is invalid.",
+    );
+  }
+  assertPlayerPrivateWorkerIdentity(ready, expectedIdentity);
+}
+
+export function assertPlayerPrivateWorkerInitializationFailure(
+  value: unknown,
+  expectedIdentity: PlayerPrivateWorkerIdentity,
+): asserts value is PlayerPrivateWorkerInitializationFailure {
+  const response = protocolRecord(
+    value,
+    "player-private worker initialization failure",
+  );
+  assertExactKeys(
+    response,
+    ["schemaVersion", "kind", ...PLAYER_PRIVATE_WORKER_IDENTITY_KEYS, "failure"],
+    "player-private worker initialization failure",
+  );
+  if (
+    response["schemaVersion"] !== 2
+    || response["kind"] !== "player-private-worker-initialization-failure"
+  ) {
+    throw new TypeError(
+      "Player-private worker initialization failure schema/kind is unsupported.",
+    );
+  }
+  assertPlayerPrivateWorkerIdentity(response, expectedIdentity);
+  const failure = protocolRecord(
+    response["failure"],
+    "player-private worker initialization failure detail",
+  );
+  assertExactKeys(
+    failure,
+    ["code", "transient", "message"],
+    "player-private worker initialization failure detail",
+  );
+  if (
+    (
+      failure["code"] !== "initialization-failed"
+      && failure["code"] !== "evaluator-unavailable"
+    )
+    || (
+      failure["code"] === "initialization-failed"
+      && failure["transient"] !== false
+    )
+    || (
+      failure["code"] === "evaluator-unavailable"
+      && failure["transient"] !== true
+    )
+    || typeof failure["message"] !== "string"
+    || failure["message"].trim().length === 0
+    || /[\r\n]/u.test(failure["message"])
+  ) {
+    throw new TypeError(
+      "Player-private worker initialization failure detail is invalid.",
+    );
+  }
 }
 
 export function assertPlayerPrivateWorkerTask(
@@ -142,7 +223,7 @@ export function assertPlayerPrivateWorkerTask(
     [
       "schemaVersion",
       "kind",
-      ...WORKER_IDENTITY_KEYS,
+      ...PLAYER_PRIVATE_WORKER_IDENTITY_KEYS,
       "taskId",
       "attempt",
       "assignedGames",
@@ -262,7 +343,7 @@ export function assertPlayerPrivateWorkerTaskResultEnvelope(
   }
 }
 
-const WORKER_IDENTITY_KEYS = [
+export const PLAYER_PRIVATE_WORKER_IDENTITY_KEYS = [
   "poolId",
   "workerId",
   "generation",
@@ -272,7 +353,6 @@ const WORKER_IDENTITY_KEYS = [
 function assertIdentityOnlyMessage(
   value: unknown,
   kind:
-    | PlayerPrivateWorkerReady["kind"]
     | PlayerPrivateWorkerShutdown["kind"]
     | PlayerPrivateWorkerStopped["kind"],
   label: string,
@@ -281,7 +361,7 @@ function assertIdentityOnlyMessage(
   const message = protocolRecord(value, label);
   assertExactKeys(
     message,
-    ["schemaVersion", "kind", ...WORKER_IDENTITY_KEYS],
+    ["schemaVersion", "kind", ...PLAYER_PRIVATE_WORKER_IDENTITY_KEYS],
     label,
   );
   if (
@@ -308,7 +388,7 @@ function assertTaskResponseEnvelope(
     [
       "schemaVersion",
       "kind",
-      ...WORKER_IDENTITY_KEYS,
+      ...PLAYER_PRIVATE_WORKER_IDENTITY_KEYS,
       "taskId",
       "attempt",
       payloadKey,
@@ -334,7 +414,7 @@ function assertTaskResponseEnvelope(
   }
 }
 
-function assertPlayerPrivateWorkerIdentity(
+export function assertPlayerPrivateWorkerIdentity(
   value: Record<string, unknown>,
   expected?: PlayerPrivateWorkerIdentity,
 ): void {

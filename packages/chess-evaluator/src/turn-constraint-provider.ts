@@ -5,13 +5,17 @@ import type {
   ExternalTurnConstraintRequest,
 } from "@drawbackengine/drawback-engine";
 import type { UciClient } from "./client.js";
+import { AuthenticatedNodeUciEngineCloseError } from "./authenticated-node-uci-engine.js";
 import { ConstraintCache } from "./constraint-cache.js";
 import type {
   ConstraintEngineFingerprint,
   ConstraintPolicyIdentity,
   ConstraintRequest,
 } from "./constraint-cache.js";
-import type { UciSearchLimit } from "./types.js";
+import {
+  errorProvesUciProcessTerminated,
+  type UciSearchLimit,
+} from "./types.js";
 
 const PROVIDER = "uci-best-move";
 
@@ -36,6 +40,12 @@ export interface UciTurnConstraintProviderOptions {
   readonly client: UciClient;
   readonly policy: UciTurnConstraintPolicy;
   readonly cache?: ConstraintCache;
+  /**
+   * Optional owner cleanup. Process-backed factories use this to close the
+   * authenticated engine and remove its private executable, not only the
+   * borrowed client.
+   */
+  readonly dispose?: () => Promise<void>;
 }
 
 function expectedPositionKey(
@@ -100,13 +110,17 @@ implements ExternalTurnConstraintProvider {
   readonly #client: UciClient;
   readonly #policy: UciTurnConstraintPolicy;
   readonly #cache: ConstraintCache;
+  readonly #disposeOwnedRuntime: () => Promise<void>;
   #disposed = false;
+  #disposePromise: Promise<void> | null = null;
   #clientQueue: Promise<void> = Promise.resolve();
 
   public constructor(options: UciTurnConstraintProviderOptions) {
     this.#client = options.client;
     this.#policy = structuredClone(options.policy);
     this.#cache = options.cache ?? new ConstraintCache();
+    this.#disposeOwnedRuntime =
+      options.dispose ?? (() => this.#client.close());
     if (this.#policy.publicEngineFingerprint.trim().length === 0) {
       throw new RangeError("Public engine fingerprint must not be empty.");
     }
@@ -209,13 +223,28 @@ implements ExternalTurnConstraintProvider {
     });
   }
 
-  public async dispose(): Promise<void> {
-    if (this.#disposed) {
-      return;
+  public dispose(): Promise<void> {
+    if (this.#disposePromise !== null) {
+      return this.#disposePromise;
     }
     this.#disposed = true;
-    await this.#clientQueue.catch(() => undefined);
-    await this.#client.close();
+    const attempt = (async () => {
+      await this.#clientQueue.catch(() => undefined);
+      await this.#disposeOwnedRuntime();
+    })();
+    this.#disposePromise = attempt;
+    void attempt.then(
+      () => undefined,
+      (error: unknown) => {
+        if (
+          this.#disposePromise === attempt
+          && !isCompletedOwnedRuntimeCleanup(error)
+        ) {
+          this.#disposePromise = null;
+        }
+      },
+    );
+    return attempt;
   }
 
   #runClientExclusive<T>(operation: () => Promise<T>): Promise<T> {
@@ -226,4 +255,11 @@ implements ExternalTurnConstraintProvider {
     );
     return result;
   }
+}
+
+function isCompletedOwnedRuntimeCleanup(error: unknown): boolean {
+  if (error instanceof AuthenticatedNodeUciEngineCloseError) {
+    return error.privateExecutableRemoved && error.processTerminated;
+  }
+  return errorProvesUciProcessTerminated(error);
 }

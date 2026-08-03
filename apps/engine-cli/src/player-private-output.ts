@@ -19,16 +19,31 @@ export interface WrittenPlayerPrivateSplitTraceFile {
   readonly sha256: string;
 }
 
+export interface PlayerPrivateTraceWriteProgress {
+  readonly split: PlayerPrivateDataSplit;
+  readonly games: number;
+  readonly bytes: number;
+}
+
+export interface PlayerPrivateTraceWriteOptions {
+  readonly onProgress?: (
+    progress: PlayerPrivateTraceWriteProgress,
+  ) => void | Promise<void>;
+  readonly signal?: AbortSignal;
+}
+
 export async function writePlayerPrivateSplitTraceFileAtomic(
   path: string,
   split: PlayerPrivateDataSplit,
   games: AsyncIterable<StreamedPlayerPrivateResult>,
+  options: PlayerPrivateTraceWriteOptions = {},
 ): Promise<WrittenPlayerPrivateSplitTraceFile> {
   let firstGameIndex: number | undefined;
   let lastGameIndex: number | undefined;
   let expectedSplitIndex = 0;
   const chunks = (async function* (): AsyncGenerator<string> {
     for await (const game of games) {
+      throwIfAborted(options.signal);
       if (game.split !== split) {
         throw new TypeError(
           `Expected only ${split} games but received ${game.split}.`,
@@ -62,10 +77,7 @@ export async function writePlayerPrivateSplitTraceFileAtomic(
           error instanceof Error ? error.message : "Unknown trace error.";
         throw new Error(
           `Failed to encode ${split} game ${String(game.splitIndex)} `
-            + `(global index ${String(game.globalIndex)}, seed `
-            + `${String(game.assignment.seed)}, `
-            + `${game.assignment.whiteRuleId} versus `
-            + `${game.assignment.blackRuleId}): ${detail}`,
+            + `(global index ${String(game.globalIndex)}): ${detail}`,
           { cause: error },
         );
       }
@@ -74,7 +86,23 @@ export async function writePlayerPrivateSplitTraceFileAtomic(
       throw new RangeError(`Cannot publish an empty ${split} split.`);
     }
   })();
-  const written = await writeNdjsonFileAtomicNoClobber(path, chunks);
+  const written = await writeNdjsonFileAtomicNoClobber(
+    path,
+    chunks,
+    {
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.onProgress === undefined
+        ? {}
+        : {
+            onProgress: ({ records, bytes }) =>
+              options.onProgress?.({
+                split,
+                games: records,
+                bytes,
+              }),
+          }),
+    },
+  );
   if (firstGameIndex === undefined || lastGameIndex === undefined) {
     throw new Error("Published split lost its game index bounds.");
   }
@@ -86,4 +114,12 @@ export async function writePlayerPrivateSplitTraceFileAtomic(
     bytes: written.bytes,
     sha256: written.sha256,
   };
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new Error("Player-private trace writing was interrupted.");
+  }
 }

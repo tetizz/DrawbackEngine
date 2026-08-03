@@ -56,7 +56,7 @@ export async function simulatePlayerPrivateAssignmentsParallel(
       ? {}
       : { maxPlies: request.maxPlies }),
   });
-  try {
+  const operation = await (async () => {
     const indexed = await pool.runBatch(
       immutableAssignments.map((assignment, gameIndex) =>
         Object.freeze({ gameIndex, assignment })
@@ -70,13 +70,36 @@ export async function simulatePlayerPrivateAssignmentsParallel(
       }
       return item.result;
     }));
-  } finally {
-    await pool.close();
+  })().then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  const cleanup = await pool.close().then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  if (!operation.ok && !cleanup.ok) {
+    throw new AggregateError(
+      [operation.error, cleanup.error],
+      "Player-private simulation and retained pool cleanup both failed.",
+    );
   }
+  if (!operation.ok) {
+    throw operation.error;
+  }
+  if (!cleanup.ok) {
+    throw cleanup.error;
+  }
+  return operation.value;
 }
 
 function freezeRecursively<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  if (ArrayBuffer.isView(value)) {
+    // The enclosing policy is an owned structured clone. Non-empty typed
+    // arrays cannot be frozen by JavaScript, but no caller retains this view.
     return value;
   }
   for (const child of Object.values(value)) {

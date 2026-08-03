@@ -2,6 +2,7 @@ import { replayCompletedPgn } from "@drawbackengine/chess-core";
 import {
   buildCompletedPgnEvaluatorSidecar,
   createConstraintCacheRecord,
+  deriveUciEvaluationContextDigest,
   type CompletedPgnEvaluatorPolicy,
   type CompletedPgnEvaluatorSidecar,
   type ConstraintCacheRecord,
@@ -16,6 +17,7 @@ export interface CompletedPgnSidecarGenerationInput {
   readonly pgn: string;
   readonly evaluator: NodeUciTurnConstraintProviderConfig;
   readonly provider: ExternalTurnConstraintProvider;
+  readonly signal?: AbortSignal;
 }
 
 export interface CompletedPgnSidecarGenerationResult {
@@ -28,6 +30,18 @@ function canonicalPolicy(
 ): CompletedPgnEvaluatorPolicy {
   const { executableSha256 } = evaluator.process;
   const { identity, engineIdentity, optionsDigest, limit } = evaluator.policy;
+  const evaluationContextDigest = deriveUciEvaluationContextDigest({
+    optionsDigest,
+    runtimeContextSha256: evaluator.process.runtimeContextSha256,
+    executableSha256,
+    advertisedOptionsSha256: evaluator.policy.advertisedOptionsSha256,
+    ...(evaluator.process.args === undefined
+      ? {}
+      : { processArgs: evaluator.process.args }),
+    ...(evaluator.client?.options === undefined
+      ? {}
+      : { configuredOptions: evaluator.client.options }),
+  });
   const searchLimit =
     "depth" in limit
       ? { kind: "depth" as const, value: limit.depth }
@@ -43,12 +57,12 @@ function canonicalPolicy(
       engine: engineIdentity.engine,
       version: engineIdentity.version,
       executableSha256,
-      optionsDigest,
+      optionsDigest: evaluationContextDigest,
       publicFingerprint: [
         engineIdentity.engine,
         engineIdentity.version,
         executableSha256,
-        optionsDigest,
+        evaluationContextDigest,
       ].join(":"),
     }),
     searchLimit: Object.freeze(searchLimit),
@@ -68,6 +82,7 @@ export async function generateCompletedPgnEvaluatorSidecarFromTrustedProvider(
   const records: ConstraintCacheRecord[] = [];
 
   for (const step of replay.steps) {
+    throwIfAborted(input.signal);
     const request = createEvaluatorTurnConstraintRequest(
       {
         fen: step.fenBefore,
@@ -82,7 +97,10 @@ export async function generateCompletedPgnEvaluatorSidecarFromTrustedProvider(
         "Evaluator configuration does not implement the replay request policy.",
       );
     }
-    const constraint = await input.provider.resolve(request);
+    const constraint = await input.provider.resolve(
+      request,
+      input.signal === undefined ? {} : { signal: input.signal },
+    );
     const record = await createConstraintCacheRecord(
       {
         policy: {
@@ -120,4 +138,12 @@ export async function generateCompletedPgnEvaluatorSidecarFromTrustedProvider(
     policy,
     records,
   });
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new Error("Completed-PGN evaluator generation was interrupted.");
+  }
 }

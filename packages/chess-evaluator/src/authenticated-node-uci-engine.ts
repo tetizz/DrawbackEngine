@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import {
+  chmod,
+  copyFile,
+  mkdtemp,
+  rm,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { UciClient } from "./client.js";
 import type { ConstraintEngineFingerprint } from "./constraint-cache.js";
 import {
@@ -11,6 +19,7 @@ import type {
   UciEngineIdentity,
   UciOptionSetting,
 } from "./types.js";
+import { errorProvesUciProcessTerminated } from "./types.js";
 
 export interface SerializableUciEngineIdentity {
   /** Exact value expected from the engine's `id name` response. */
@@ -25,6 +34,11 @@ export interface AuthenticatedNodeUciEngineConfig {
   readonly process: NodeProcessTransportOptions & {
     /** Expected SHA-256 of the executable file bytes, verified before spawn. */
     readonly executableSha256: string;
+    /**
+     * Caller-pinned digest of the canonical runtime manifest, including
+     * semantic arguments and any cwd-resolved evaluation assets.
+     */
+    readonly runtimeContextSha256: string;
   };
   readonly client?: UciClientOptions;
   readonly engineIdentity: SerializableUciEngineIdentity;
@@ -57,6 +71,7 @@ export interface AuthenticatedUciEngineIdentity
 interface ValidatedAuthenticatedNodeUciEngineConfig {
   readonly process: NodeProcessTransportOptions;
   readonly executableSha256: string;
+  readonly runtimeContextSha256: string;
   readonly client: UciClientOptions;
   readonly engineIdentity: SerializableUciEngineIdentity;
   readonly optionsDigest: string;
@@ -75,6 +90,143 @@ export class AuthenticatedNodeUciEngineError extends Error {
     super(message, options);
     this.name = "AuthenticatedNodeUciEngineError";
   }
+}
+
+export class AuthenticatedNodeUciEngineCloseError extends Error {
+  public constructor(
+    message: string,
+    public readonly privateExecutableRemoved: boolean,
+    public readonly processTerminated: boolean,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "AuthenticatedNodeUciEngineCloseError";
+  }
+}
+
+export class IncompleteSameOwnerCleanupError extends AggregateError {
+  public readonly cleanupComplete = false;
+  readonly #closeSameOwner: () => Promise<void>;
+  readonly #cleanupProvesComplete: (error: unknown) => boolean;
+  readonly #cleanupFailureMessage: string;
+  readonly #failures: readonly unknown[];
+  readonly #cleanupOwnerIdentity: object;
+  #activeRetry: Promise<void> | undefined;
+
+  public constructor(
+    failures: readonly unknown[],
+    cleanupFailureMessage: string,
+    closeSameOwner: () => Promise<void>,
+    cleanupProvesComplete: (error: unknown) => boolean =
+      authenticatedCleanupProvesComplete,
+    cleanupOwnerIdentity: object = Object.freeze({}),
+  ) {
+    super([...failures], cleanupFailureMessage);
+    this.name = "IncompleteSameOwnerCleanupError";
+    this.#failures = [...failures];
+    this.#cleanupFailureMessage = cleanupFailureMessage;
+    this.#closeSameOwner = closeSameOwner;
+    this.#cleanupProvesComplete = cleanupProvesComplete;
+    this.#cleanupOwnerIdentity = cleanupOwnerIdentity;
+  }
+
+  public cleanupOwnerIdentity(): object {
+    return this.#cleanupOwnerIdentity;
+  }
+
+  /** Retries cleanup through the retained owner; it never creates a process. */
+  public retryCleanup(): Promise<void> {
+    if (this.#activeRetry !== undefined) {
+      return this.#activeRetry;
+    }
+    const attempt = this.#retryCleanupOnce();
+    this.#activeRetry = attempt;
+    void attempt.then(
+      () => {
+        if (this.#activeRetry === attempt) {
+          this.#activeRetry = undefined;
+        }
+      },
+      () => {
+        if (this.#activeRetry === attempt) {
+          this.#activeRetry = undefined;
+        }
+      },
+    );
+    return attempt;
+  }
+
+  async #retryCleanupOnce(): Promise<void> {
+    try {
+      await this.#closeSameOwner();
+    } catch (cleanupFailure: unknown) {
+      const failures = [...this.#failures, cleanupFailure];
+      if (this.#cleanupProvesComplete(cleanupFailure)) {
+        throw new AggregateError(
+          failures,
+          this.#cleanupFailureMessage,
+        );
+      }
+      throw new IncompleteSameOwnerCleanupError(
+        failures,
+        this.#cleanupFailureMessage,
+        this.#closeSameOwner,
+        this.#cleanupProvesComplete,
+        this.#cleanupOwnerIdentity,
+      );
+    }
+  }
+}
+
+const MAX_SAME_OWNER_FAILURE_CLEANUP_ATTEMPTS = 2;
+
+/**
+ * Finishes cleanup after an operation failed while retaining its only owner
+ * handle. Cleanup is retried at most once, and only through the exact closer
+ * supplied by that owner. A replacement client or process is never created.
+ */
+export async function throwAfterSameOwnerCleanup(
+  originalFailure: unknown,
+  closeSameOwner: () => Promise<void>,
+  cleanupFailureMessage: string,
+  cleanupProvesComplete: (error: unknown) => boolean =
+    authenticatedCleanupProvesComplete,
+): Promise<never> {
+  const cleanupFailures: unknown[] = [];
+  let cleanupComplete = false;
+  for (
+    let attempt = 0;
+    attempt < MAX_SAME_OWNER_FAILURE_CLEANUP_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      await closeSameOwner();
+      cleanupComplete = true;
+      break;
+    } catch (cleanupFailure: unknown) {
+      cleanupFailures.push(cleanupFailure);
+      if (cleanupProvesComplete(cleanupFailure)) {
+        cleanupComplete = true;
+        break;
+      }
+    }
+  }
+  if (cleanupFailures.length > 0) {
+    const failures = [originalFailure, ...cleanupFailures];
+    if (!cleanupComplete) {
+      throw new IncompleteSameOwnerCleanupError(
+        failures,
+        cleanupFailureMessage,
+        closeSameOwner,
+        cleanupProvesComplete,
+      );
+    }
+    throw new AggregateError(
+      failures,
+      cleanupFailureMessage,
+    );
+  }
+  throw originalFailure;
 }
 
 /**
@@ -101,6 +253,50 @@ export function digestUciOptionDeclarations(
     .digest("hex");
 }
 
+export interface UciEvaluationContextDigestInput {
+  readonly optionsDigest: string;
+  readonly runtimeContextSha256: string;
+  readonly executableSha256: string;
+  readonly processArgs?: readonly string[];
+  readonly configuredOptions?: readonly UciOptionSetting[];
+  readonly advertisedOptionsSha256?: string;
+}
+
+/** Binds actual UCI settings to authenticated code and runtime assets. */
+export function deriveUciEvaluationContextDigest(
+  input: UciEvaluationContextDigestInput,
+): string {
+  const options = sha256Digest(input.optionsDigest, "UCI options digest");
+  const runtime = sha256Digest(
+    input.runtimeContextSha256,
+    "UCI runtime context SHA-256",
+  );
+  const executable = sha256Digest(
+    input.executableSha256,
+    "UCI executable SHA-256",
+  );
+  const args = (input.processArgs ?? []).map(processArgument);
+  const configuredOptions = (input.configuredOptions ?? []).map(copyOption);
+  const advertisedOptionsSha256 =
+    input.advertisedOptionsSha256 === undefined
+      ? null
+      : sha256Digest(
+          input.advertisedOptionsSha256,
+          "Advertised UCI options SHA-256",
+        );
+  return createHash("sha256")
+    .update(JSON.stringify({
+      format: "drawbackengine-uci-evaluation-context-v1",
+      executableSha256: executable,
+      processArgs: args,
+      optionsDigest: options,
+      configuredOptions,
+      advertisedOptionsSha256,
+      runtimeContextSha256: runtime,
+    }), "utf8")
+    .digest("hex");
+}
+
 /**
  * Authenticates an executable before spawning it, initializes exactly one UCI
  * process, and verifies its pinned identity and configuration surface.
@@ -109,14 +305,19 @@ export async function createAuthenticatedNodeUciEngine(
   input: AuthenticatedNodeUciEngineConfig,
 ): Promise<AuthenticatedNodeUciEngine> {
   const config = validateAndCopyConfig(input);
-  await verifyExecutable(
+  const executable = await stageAuthenticatedExecutable(
     config.process.executablePath,
     config.executableSha256,
   );
-  const transport = new NodeProcessUciTransport(config.process);
-  const client = new UciClient(transport, config.client);
+  let transport: NodeProcessUciTransport | undefined;
+  let client: UciClient | undefined;
 
   try {
+    transport = new NodeProcessUciTransport({
+      ...config.process,
+      executablePath: executable.path,
+    });
+    client = new UciClient(transport, config.client);
     const identity = await client.initialize();
     if (identity.name !== config.engineIdentity.uciName) {
       throw new AuthenticatedNodeUciEngineError(
@@ -137,7 +338,23 @@ export async function createAuthenticatedNodeUciEngine(
     const fingerprint = Object.freeze({
       engine: config.engineIdentity.engine,
       version: config.engineIdentity.version,
-      optionsDigest: config.optionsDigest,
+      optionsDigest: deriveUciEvaluationContextDigest({
+        optionsDigest: config.optionsDigest,
+        runtimeContextSha256: config.runtimeContextSha256,
+        executableSha256: config.executableSha256,
+        ...(config.process.args === undefined
+          ? {}
+          : { processArgs: config.process.args }),
+        ...(config.client.options === undefined
+          ? {}
+          : { configuredOptions: config.client.options }),
+        ...(config.advertisedOptionsSha256 === undefined
+          ? {}
+          : {
+              advertisedOptionsSha256:
+                config.advertisedOptionsSha256,
+            }),
+      }),
     });
     const publicFingerprint = [
       fingerprint.engine,
@@ -150,19 +367,70 @@ export async function createAuthenticatedNodeUciEngine(
       author: identity.author,
       options: Object.freeze([...identity.options]),
     });
+    const initializedClient = client;
+    const close = retryableClose(() =>
+      closeAuthenticatedEngine(
+        initializedClient,
+        undefined,
+        () => executable.cleanup(),
+      )
+    );
     return Object.freeze({
-      client,
+      client: initializedClient,
       identity: frozenIdentity,
       fingerprint,
       executableSha256: config.executableSha256,
       publicFingerprint,
-      close: () => client.close(),
+      close,
     });
   } catch (error: unknown) {
-    // Cleanup is best effort and must never hide the authentication error.
-    await client.close().catch(() => undefined);
-    throw error;
+    return throwAfterSameOwnerCleanup(
+      error,
+      () =>
+        closeAuthenticatedEngine(
+          client,
+          transport,
+          () => executable.cleanup(),
+        ),
+      "UCI authentication failed and authenticated cleanup encountered failures.",
+    );
   }
+}
+
+function retryableClose(closeOnce: () => Promise<void>): () => Promise<void> {
+  let complete = false;
+  let active: Promise<void> | undefined;
+  return () => {
+    if (complete) {
+      return Promise.resolve();
+    }
+    if (active !== undefined) {
+      return active;
+    }
+    const attempt = closeOnce();
+    active = attempt;
+    void attempt.then(
+      () => {
+        complete = true;
+        if (active === attempt) {
+          active = undefined;
+        }
+      },
+      (error: unknown) => {
+        if (
+          active === attempt
+          && error instanceof AuthenticatedNodeUciEngineCloseError
+          && (
+            !error.privateExecutableRemoved
+            || !error.processTerminated
+          )
+        ) {
+          active = undefined;
+        }
+      },
+    );
+    return attempt;
+  };
 }
 
 function validateAndCopyConfig(
@@ -175,6 +443,10 @@ function validateAndCopyConfig(
   const executableSha256 = sha256Digest(
     input.process.executableSha256,
     "UCI executable SHA-256",
+  );
+  const runtimeContextSha256 = sha256Digest(
+    input.process.runtimeContextSha256,
+    "UCI runtime context SHA-256",
   );
   const args = input.process.args?.map(processArgument);
   const cwd = input.process.cwd === undefined
@@ -223,6 +495,7 @@ function validateAndCopyConfig(
       ...(shutdownTimeoutMs === undefined ? {} : { shutdownTimeoutMs }),
     },
     executableSha256,
+    runtimeContextSha256,
     client: {
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
       ...(options === undefined ? {} : { options }),
@@ -235,22 +508,80 @@ function validateAndCopyConfig(
   };
 }
 
-async function verifyExecutable(
-  executablePath: string,
+interface StagedAuthenticatedExecutable {
+  readonly path: string;
+  cleanup(): Promise<void>;
+}
+
+/**
+ * Copies the caller-selected executable into a private directory and hashes
+ * that exact copy before spawning it. This closes the source-path replacement
+ * race. It does not claim to defend against another process running as the same
+ * operating-system account and mutating the private staging directory.
+ */
+async function stageAuthenticatedExecutable(
+  sourcePath: string,
   expectedSha256: string,
-): Promise<void> {
-  let actualSha256: string;
+): Promise<StagedAuthenticatedExecutable> {
+  let directory: string;
   try {
-    actualSha256 = await hashFile(executablePath);
+    directory = await mkdtemp(join(tmpdir(), "drawback-uci-"));
   } catch (error: unknown) {
     throw new UciExecutableIntegrityError(
-      "Unable to verify configured UCI executable bytes.",
+      "Unable to create private UCI executable staging.",
       { cause: error },
     );
   }
+  const stagedPath = join(
+    directory,
+    process.platform === "win32" ? "engine.exe" : "engine",
+  );
+  let actualSha256: string;
+  try {
+    await copyFile(sourcePath, stagedPath);
+    await chmod(stagedPath, 0o700);
+    actualSha256 = await hashFile(stagedPath);
+  } catch (error: unknown) {
+    return failExecutableStaging(
+      directory,
+      new UciExecutableIntegrityError(
+        "Unable to verify configured UCI executable bytes.",
+        { cause: error },
+      ),
+    );
+  }
   if (actualSha256 !== expectedSha256) {
+    return failExecutableStaging(
+      directory,
+      new UciExecutableIntegrityError(
+        "Configured UCI executable SHA-256 mismatch against caller-pinned digest.",
+      ),
+    );
+  }
+  return Object.freeze({
+    path: stagedPath,
+    cleanup: () => removeStagedExecutable(directory),
+  });
+}
+
+async function failExecutableStaging(
+  directory: string,
+  authenticationFailure: Error,
+): Promise<never> {
+  return throwAfterSameOwnerCleanup(
+    authenticationFailure,
+    () => removeStagedExecutable(directory),
+    "UCI executable authentication failed and private cleanup encountered failures.",
+  );
+}
+
+async function removeStagedExecutable(directory: string): Promise<void> {
+  try {
+    await rm(directory, { recursive: true, force: true });
+  } catch (error: unknown) {
     throw new UciExecutableIntegrityError(
-      "Configured UCI executable SHA-256 mismatch against caller-pinned digest.",
+      "Unable to remove the private authenticated UCI executable.",
+      { cause: error },
     );
   }
 }
@@ -267,6 +598,58 @@ function hashFile(path: string): Promise<string> {
       resolve(hash.digest("hex"));
     });
   });
+}
+
+async function closeAuthenticatedEngine(
+  client: UciClient | undefined,
+  transport: NodeProcessUciTransport | undefined,
+  cleanupExecutable: () => Promise<void>,
+): Promise<void> {
+  let shutdownFailure: unknown;
+  let cleanupFailure: unknown;
+  try {
+    if (client === undefined) {
+      await transport?.close();
+    } else {
+      await client.close();
+    }
+  } catch (error: unknown) {
+    shutdownFailure = error;
+  }
+  try {
+    await cleanupExecutable();
+  } catch (error: unknown) {
+    cleanupFailure = error;
+  }
+  const failures = [shutdownFailure, cleanupFailure].filter(
+    (failure) => failure !== undefined,
+  );
+  if (failures.length > 0) {
+    const privateExecutableRemoved = cleanupFailure === undefined;
+    throw new AuthenticatedNodeUciEngineCloseError(
+      privateExecutableRemoved
+        ? "UCI engine shutdown failed after private executable cleanup."
+        : "UCI engine shutdown or private executable cleanup failed.",
+      privateExecutableRemoved,
+      shutdownFailure === undefined
+        || errorProvesUciProcessTerminated(shutdownFailure),
+      {
+        cause:
+          failures.length === 1
+            ? failures[0]
+            : new AggregateError(
+                failures,
+                "UCI engine shutdown and executable cleanup both failed.",
+              ),
+      },
+    );
+  }
+}
+
+function authenticatedCleanupProvesComplete(error: unknown): boolean {
+  return error instanceof AuthenticatedNodeUciEngineCloseError
+    && error.privateExecutableRemoved
+    && error.processTerminated;
 }
 
 function assertConfiguredOptions(

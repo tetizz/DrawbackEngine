@@ -1,6 +1,7 @@
 import { parseBestMove, parseInfo } from "./parser.js";
 import type {
   UciClientOptions,
+  UciControlOptions,
   UciEngineIdentity,
   UciEvaluation,
   UciEvaluationOptions,
@@ -9,7 +10,12 @@ import type {
   UciSearchLimit,
   UciTransport,
 } from "./types.js";
-import { UciProtocolError, UciTimeoutError } from "./types.js";
+import {
+  errorProvesUciProcessTerminated,
+  UciProcessExitError,
+  UciProtocolError,
+  UciTimeoutError,
+} from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const UCI_MOVE = /^[a-h][1-8][a-h][1-8][qrbn]?$/u;
@@ -64,6 +70,10 @@ export class UciClient {
   #controlling = false;
   #poisoned = false;
   #closed = false;
+  #quitAttempted = false;
+  #transportCloseComplete = false;
+  #terminalCloseFailure: Error | undefined;
+  #closeAttempt: Promise<void> | undefined;
 
   public constructor(transport: UciTransport, options: UciClientOptions = {}) {
     this.#transport = transport;
@@ -95,7 +105,9 @@ export class UciClient {
     return this.#configuredOptions.get(name.toLowerCase());
   }
 
-  public async initialize(): Promise<UciEngineIdentity> {
+  public async initialize(
+    options: UciControlOptions = {},
+  ): Promise<UciEngineIdentity> {
     this.#assertOpen();
     if (this.#poisoned) {
       throw new UciProtocolError(
@@ -109,13 +121,23 @@ export class UciClient {
       throw new UciProtocolError("Another UCI control operation is in progress.");
     }
     this.#controlling = true;
+    const deadlineMs = performance.now() + this.#timeoutMs;
     try {
-      await this.#transport.send("uci");
+      await this.#sendBeforeDeadline(
+        "uci",
+        deadlineMs,
+        "UCI initialization command",
+        options.signal,
+      );
       let name: string | null = null;
       let author: string | null = null;
-      const options: string[] = [];
+      const advertisedOptionLines: string[] = [];
       for (;;) {
-        const line = await this.#nextLine("uciok");
+        const line = await this.#nextLine(
+          "uciok",
+          options.signal,
+          deadlineMs,
+        );
         if (line === "uciok") {
           break;
         }
@@ -124,17 +146,21 @@ export class UciClient {
         } else if (line.startsWith("id author ")) {
           author = line.slice("id author ".length);
         } else if (line.startsWith("option ")) {
-          options.push(line);
+          advertisedOptionLines.push(line);
           this.#rememberOption(line);
         }
       }
-      await this.#sendOptions(this.#initialOptions);
-      await this.#readinessBarrier();
+      await this.#sendOptions(
+        this.#initialOptions,
+        deadlineMs,
+        options.signal,
+      );
+      await this.#readinessBarrier(deadlineMs, options.signal);
       this.#initialized = true;
       const identity: UciEngineIdentity = {
         name,
         author,
-        options: [...options],
+        options: [...advertisedOptionLines],
       };
       this.#identity = Object.freeze(identity);
       return { ...identity, options: [...identity.options] };
@@ -148,11 +174,13 @@ export class UciClient {
 
   public async configureOptions(
     options: readonly UciOptionSetting[],
+    control: UciControlOptions = {},
   ): Promise<void> {
     this.#beginControl();
+    const deadlineMs = performance.now() + this.#timeoutMs;
     try {
-      await this.#sendOptions(options);
-      await this.#readinessBarrier();
+      await this.#sendOptions(options, deadlineMs, control.signal);
+      await this.#readinessBarrier(deadlineMs, control.signal);
     } catch (error) {
       this.#poisoned = true;
       throw error;
@@ -161,10 +189,11 @@ export class UciClient {
     }
   }
 
-  public async ready(): Promise<void> {
+  public async ready(options: UciControlOptions = {}): Promise<void> {
     this.#beginControl();
+    const deadlineMs = performance.now() + this.#timeoutMs;
     try {
-      await this.#readinessBarrier();
+      await this.#readinessBarrier(deadlineMs, options.signal);
     } catch (error) {
       this.#poisoned = true;
       throw error;
@@ -177,12 +206,22 @@ export class UciClient {
    * Starts a position-independent engine epoch by clearing both game state and
    * the transposition table before the readiness barrier.
    */
-  public async reset(): Promise<void> {
+  public async reset(options: UciControlOptions = {}): Promise<void> {
     this.#beginControl();
+    const deadlineMs = performance.now() + this.#timeoutMs;
     try {
-      await this.#transport.send("ucinewgame");
-      await this.#sendOptions([{ name: "Clear Hash" }]);
-      await this.#readinessBarrier();
+      await this.#sendBeforeDeadline(
+        "ucinewgame",
+        deadlineMs,
+        "new-game command",
+        options.signal,
+      );
+      await this.#sendOptions(
+        [{ name: "Clear Hash" }],
+        deadlineMs,
+        options.signal,
+      );
+      await this.#readinessBarrier(deadlineMs, options.signal);
     } catch (error) {
       this.#poisoned = true;
       throw error;
@@ -191,11 +230,17 @@ export class UciClient {
     }
   }
 
-  public async newGame(): Promise<void> {
+  public async newGame(options: UciControlOptions = {}): Promise<void> {
     this.#beginControl();
+    const deadlineMs = performance.now() + this.#timeoutMs;
     try {
-      await this.#transport.send("ucinewgame");
-      await this.#readinessBarrier();
+      await this.#sendBeforeDeadline(
+        "ucinewgame",
+        deadlineMs,
+        "new-game command",
+        options.signal,
+      );
+      await this.#readinessBarrier(deadlineMs, options.signal);
     } catch (error) {
       this.#poisoned = true;
       throw error;
@@ -235,11 +280,13 @@ export class UciClient {
         `position fen ${normalizedFen}`,
         deadlineMs,
         "position setup",
+        options.signal,
       );
       await this.#sendBeforeDeadline(
         `go ${go}${searchMoves}`,
         deadlineMs,
         "search start",
+        options.signal,
       );
       let latestInfo: UciSearchInfo | null = null;
       let cancelled = false;
@@ -293,37 +340,83 @@ export class UciClient {
     }
   }
 
-  public async close(): Promise<void> {
-    if (this.#closed) {
-      return;
+  public close(): Promise<void> {
+    if (this.#terminalCloseFailure !== undefined) {
+      return Promise.reject(this.#terminalCloseFailure);
+    }
+    if (this.#transportCloseComplete) {
+      return Promise.resolve();
+    }
+    if (this.#closeAttempt !== undefined) {
+      return this.#closeAttempt;
     }
     this.#closed = true;
+    const attempt = this.#closeOnce();
+    this.#closeAttempt = attempt;
+    void attempt.then(
+      () => {
+        if (this.#closeAttempt === attempt) {
+          this.#closeAttempt = undefined;
+        }
+      },
+      () => {
+        if (this.#closeAttempt === attempt) {
+          this.#closeAttempt = undefined;
+        }
+      },
+    );
+    return attempt;
+  }
+
+  async #closeOnce(): Promise<void> {
     let quitFailure: Error | undefined;
-    try {
-      await this.#transport.send("quit");
-    } catch (error: unknown) {
-      quitFailure = protocolFailure(
-        error,
-        "UCI transport rejected the quit command.",
-      );
-    }
-    try {
-      await this.#transport.close();
-    } catch (closeFailure: unknown) {
-      const normalizedCloseFailure = protocolFailure(
-        closeFailure,
-        "UCI transport shutdown failed.",
-      );
-      if (quitFailure !== undefined) {
-        throw new AggregateError(
-          [quitFailure, normalizedCloseFailure],
-          "UCI quit command and transport shutdown both failed.",
+    if (!this.#quitAttempted) {
+      this.#quitAttempted = true;
+      try {
+        await this.#sendBeforeDeadline(
+          "quit",
+          performance.now() + this.#timeoutMs,
+          "quit command",
+        );
+      } catch (error: unknown) {
+        quitFailure = protocolFailure(
+          error,
+          "UCI transport rejected the quit command.",
         );
       }
-      throw normalizedCloseFailure;
     }
-    if (quitFailure !== undefined) {
-      throw quitFailure;
+    let closeFailure: Error | undefined;
+    try {
+      await this.#transport.close();
+      this.#transportCloseComplete = true;
+    } catch (error: unknown) {
+      closeFailure = protocolFailure(
+        error,
+        "UCI transport shutdown failed.",
+      );
+      if (errorProvesUciProcessTerminated(closeFailure)) {
+        this.#transportCloseComplete = true;
+      }
+    }
+    const failure = quitFailure === undefined
+      ? closeFailure
+      : closeFailure === undefined
+        ? quitFailure
+        : new AggregateError(
+            [quitFailure, closeFailure],
+            "UCI quit command and transport shutdown both failed.",
+          );
+    if (failure !== undefined) {
+      if (this.#transportCloseComplete) {
+        this.#terminalCloseFailure = errorProvesUciProcessTerminated(failure)
+          ? failure
+          : new UciProcessExitError(
+              "UCI process terminated after a shutdown failure.",
+              { cause: failure },
+            );
+        throw this.#terminalCloseFailure;
+      }
+      throw failure;
     }
   }
 
@@ -371,7 +464,11 @@ export class UciClient {
     this.#advertisedOptions.set(key, { name, type });
   }
 
-  async #sendOptions(options: readonly UciOptionSetting[]): Promise<void> {
+  async #sendOptions(
+    options: readonly UciOptionSetting[],
+    deadlineMs: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const commands = options.map((setting) => {
       validateOptionSetting(setting);
       const advertised = this.#advertisedOptions.get(
@@ -401,26 +498,49 @@ export class UciClient {
       };
     });
     for (const { command, key, value } of commands) {
-      await this.#transport.send(command);
+      await this.#sendBeforeDeadline(
+        command,
+        deadlineMs,
+        `UCI option ${key}`,
+        signal,
+      );
       if (value !== undefined) {
         this.#configuredOptions.set(key, value);
       }
     }
   }
 
-  async #readinessBarrier(): Promise<void> {
-    await this.#transport.send("isready");
+  async #readinessBarrier(
+    deadlineMs: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.#sendBeforeDeadline(
+      "isready",
+      deadlineMs,
+      "readiness command",
+      signal,
+    );
     for (;;) {
-      if ((await this.#nextLine("readyok")) === "readyok") {
+      if (
+        (await this.#nextLine("readyok", signal, deadlineMs)) === "readyok"
+      ) {
         return;
       }
     }
   }
 
-  async #nextLine(waitingFor: string): Promise<string> {
-    const event = await this.#nextSearchEvent(waitingFor);
+  async #nextLine(
+    waitingFor: string,
+    signal?: AbortSignal,
+    deadlineMs?: number,
+  ): Promise<string> {
+    const event = await this.#nextSearchEvent(
+      waitingFor,
+      signal,
+      deadlineMs,
+    );
     if (event.kind === "abort") {
-      throw new UciProtocolError("Unexpected abort without an AbortSignal.");
+      throw createAbortError();
     }
     return event.line;
   }
@@ -500,32 +620,77 @@ export class UciClient {
     command: string,
     deadlineMs: number,
     waitingFor: string,
+    signal?: AbortSignal,
   ): Promise<void> {
+    if (signal?.aborted === true) {
+      throw createAbortError();
+    }
     const timeoutMs = deadlineMs - performance.now();
     if (timeoutMs <= 0) {
       this.#poisoned = true;
       throw this.#timeoutError(waitingFor);
     }
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let removeAbortListener: (() => void) | undefined;
     const timeoutPromise = new Promise<"timeout">((resolve) => {
       timeout = setTimeout(() => {
         resolve("timeout");
       }, timeoutMs);
     });
+    const abortPromise = signal === undefined
+      ? new Promise<never>(() => undefined)
+      : new Promise<"abort">((resolve) => {
+          const onAbort = (): void => {
+            resolve("abort");
+          };
+          signal.addEventListener("abort", onAbort, { once: true });
+          removeAbortListener = () => {
+            signal.removeEventListener("abort", onAbort);
+          };
+          if (signal.aborted) {
+            onAbort();
+          }
+        });
+    const sendState = { completed: false };
+    const send = this.#transport.send(command).then(() => {
+      sendState.completed = true;
+      return "sent" as const;
+    });
     try {
       const result = await Promise.race([
-        this.#transport.send(command).then(() => "sent" as const),
+        send,
         timeoutPromise,
+        abortPromise,
       ]);
       if (result === "timeout") {
         this.#poisoned = true;
+        this.#beginDetachedClose();
         throw this.#timeoutError(waitingFor);
+      }
+      if (result === "abort") {
+        // If the write completed in the same turn, the caller must continue
+        // into the normal stop/drain path. Otherwise dispatch is unknowable,
+        // so the client is poisoned and its transport is closed independently.
+        await Promise.resolve();
+        if (sendState.completed) {
+          return;
+        }
+        this.#poisoned = true;
+        this.#beginDetachedClose();
+        throw createAbortError();
       }
     } finally {
       if (timeout !== undefined) {
         clearTimeout(timeout);
       }
+      removeAbortListener?.();
     }
+  }
+
+  #beginDetachedClose(): void {
+    void this.close().catch(() => {
+      // The owner can call close again to retry incomplete process cleanup.
+    });
   }
 
   #timeoutError(waitingFor: string): UciTimeoutError {

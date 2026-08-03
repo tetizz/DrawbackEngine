@@ -339,6 +339,41 @@ describe("initializeFairyStockfishLeafEvaluator", () => {
     },
   );
 
+  it.each([
+    {
+      label: "a null best move",
+      responses: [
+        "info depth 5 score cp 12 pv e1e2",
+        "bestmove 0000",
+      ],
+      message: "returned no move",
+    },
+    {
+      label: "an incomplete fixed depth",
+      responses: [
+        "info depth 4 score cp 12 pv e1e2",
+        "bestmove e1e2",
+      ],
+      message: "did not complete the requested fixed-depth",
+    },
+  ])("rejects $label", async ({ responses, message }) => {
+    const { evaluator } = await initializedClient([
+      ...handshake(),
+      { command: "ucinewgame" },
+      { command: "setoption name Clear Hash" },
+      { command: "isready", responses: ["readyok"] },
+      { command: `position fen ${FEN}` },
+      {
+        command: "go depth 5 searchmoves e1e2 e2a2",
+        responses,
+      },
+      { command: "quit" },
+    ], 5);
+
+    await expect(evaluator.evaluate(leaf())).rejects.toThrow(message);
+    await evaluator.close();
+  });
+
   it("serializes reset and search on the borrowed client", async () => {
     const search = (score: number) => [
       { command: "ucinewgame" },

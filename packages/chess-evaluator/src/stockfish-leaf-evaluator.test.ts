@@ -261,4 +261,52 @@ describe("createStockfishLeafEvaluator", () => {
     );
     expect(transport.complete).toBe(true);
   });
+
+  it.each([
+    {
+      label: "a null best move",
+      responses: [
+        "info depth 7 nodes 100 score cp 42 pv d2d4 d7d5",
+        "bestmove 0000",
+      ],
+      message: "returned no move",
+    },
+    {
+      label: "an incomplete fixed depth",
+      responses: [
+        "info depth 6 nodes 100 score cp 42 pv d2d4 d7d5",
+        "bestmove d2d4",
+      ],
+      message: "did not complete the requested fixed-depth",
+    },
+  ])("rejects $label", async ({ responses, message }) => {
+    const transport = new MockUciTransport([
+      {
+        command: "uci",
+        responses: [
+          "id name Stockfish Test",
+          "option name Clear Hash type button",
+          "uciok",
+        ],
+      },
+      { command: "isready", responses: ["readyok"] },
+      { command: "ucinewgame" },
+      { command: "setoption name Clear Hash" },
+      { command: "isready", responses: ["readyok"] },
+      { command: `position fen ${FEN}` },
+      {
+        command: "go depth 7 searchmoves d2d4 e2e4",
+        responses,
+      },
+    ]);
+    const client = new UciClient(transport);
+    await client.initialize();
+    const evaluator = createStockfishLeafEvaluator({
+      client,
+      depth: 7,
+    });
+
+    await expect(evaluator.evaluate(leaf())).rejects.toThrow(message);
+    expect(transport.complete).toBe(true);
+  });
 });

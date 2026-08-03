@@ -209,7 +209,10 @@ function validateAgents(
   assertExactKeys(agents, ["white", "black"], "player-private result agents");
   const expectedSearchPolicy = {
     policyId: policy.policyId,
-    evaluatorId: "drawback-material/v1",
+    evaluatorId:
+      policy.evaluator.kind === "material"
+        ? "drawback-material/v1"
+        : policy.evaluator.evaluatorId,
     maxDepth: policy.maxDepth,
     maxNodes: policy.maxNodes,
     leafCacheEntries:

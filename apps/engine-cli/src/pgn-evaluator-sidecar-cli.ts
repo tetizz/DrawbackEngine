@@ -16,6 +16,15 @@ import { writeUtf8FileAtomicNoClobber } from "./atomic-file.js";
 import {
   generateCompletedPgnEvaluatorSidecarFromTrustedProvider,
 } from "./pgn-evaluator-sidecar.js";
+import { redactLocalPaths } from "./failure-redaction.js";
+import { retryRetainedCleanup } from "./retained-cleanup.js";
+import {
+  findCleanupTerminationError,
+  installTerminationSignal,
+} from "./termination-signal.js";
+import { runWithOwnedProviderCleanup } from "./owned-provider-operation.js";
+
+const termination = installTerminationSignal();
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name];
@@ -47,9 +56,19 @@ function configuration(
     { name: "Ponder", value: false },
     { name: "MultiPV", value: 1 },
     { name: "UCI_Chess960", value: false },
+    { name: "UCI_LimitStrength", value: false },
+    { name: "Skill Level", value: 20 },
+    { name: "SyzygyPath", value: "<empty>" },
+    { name: "Clear Hash" },
   ] as const;
   return {
-    process: { executablePath, executableSha256 },
+    process: {
+      executablePath,
+      executableSha256,
+      runtimeContextSha256: requiredEnvironment(
+        "STOCKFISH_RUNTIME_CONTEXT_SHA256",
+      ),
+    },
     client: { timeoutMs: 30_000, options },
     policy: {
       identity: { id: "stockfish-bestmove-v1", version: 1 },
@@ -58,6 +77,9 @@ function configuration(
         engine: "stockfish",
         version: requiredEnvironment("STOCKFISH_VERSION"),
       },
+      advertisedOptionsSha256: requiredEnvironment(
+        "STOCKFISH_ADVERTISED_OPTIONS_SHA256",
+      ),
       optionsDigest: digest(options),
       limit: { nodes: 10_000 },
     },
@@ -99,16 +121,14 @@ async function main(): Promise<void> {
   const pgn = decodeUtf8(readFileSync(pgnPath));
   const evaluator = configuration(invocationDirectory);
   const provider = await createNodeUciTurnConstraintProvider(evaluator);
-  let generated;
-  try {
-    generated = await generateCompletedPgnEvaluatorSidecarFromTrustedProvider({
+  const generated = await runWithOwnedProviderCleanup(provider, () =>
+    generateCompletedPgnEvaluatorSidecarFromTrustedProvider({
       pgn,
       evaluator,
       provider,
-    });
-  } finally {
-    await provider.dispose();
-  }
+      signal: termination.signal,
+    })
+  );
 
   const serialized = serializeCompletedPgnEvaluatorSidecar(
     generated.sidecar,
@@ -123,9 +143,14 @@ async function main(): Promise<void> {
   );
 }
 
-void main().catch((error: unknown) => {
+void main().catch(async (error: unknown) => {
+  const reported = await retryRetainedCleanup(error, 2);
   const message =
-    error instanceof Error ? error.message : "Unknown evaluator sidecar error.";
+    reported instanceof Error
+      ? redactLocalPaths(reported.message)
+      : "Unknown evaluator sidecar error.";
   console.error(`Evaluator sidecar generation failed: ${message}`);
-  process.exitCode = 1;
+  process.exitCode = findCleanupTerminationError(reported)?.exitCode ?? 1;
+}).finally(() => {
+  termination.dispose();
 });

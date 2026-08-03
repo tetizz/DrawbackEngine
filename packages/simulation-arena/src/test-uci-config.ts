@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type {
-  NodeUciTurnConstraintProviderConfig,
+import {
+  digestUciOptionDeclarations,
+  type NodeUciTurnConstraintProviderConfig,
 } from "@drawbackengine/chess-evaluator";
 
 const ENGINE = String.raw`
@@ -39,6 +40,7 @@ export const TEST_UCI_CONFIG: NodeUciTurnConstraintProviderConfig = {
     executableSha256: createHash("sha256")
       .update(readFileSync(process.execPath))
       .digest("hex"),
+    runtimeContextSha256: "34".repeat(32),
     args: ["-e", ENGINE],
   },
   client: {
@@ -55,6 +57,11 @@ export const TEST_UCI_CONFIG: NodeUciTurnConstraintProviderConfig = {
       engine: "drawbackengine-fixture",
       version: "1",
     },
+    advertisedOptionsSha256: digestUciOptionDeclarations([
+      "option name Threads type spin default 1 min 1 max 1",
+      "option name Hash type spin default 16 min 1 max 128",
+      "option name Clear Hash type button",
+    ]),
     optionsDigest: "12".repeat(32),
     limit: { nodes: 1 },
   },

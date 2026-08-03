@@ -96,7 +96,114 @@ describe("player-private split trace output", () => {
     },
     30_000,
   );
+
+  it(
+    "reports progress without changing trace bytes or digest",
+    async () => {
+      const withoutProgress = temporaryPath("without-progress");
+      const withProgress = temporaryPath("with-progress");
+      const createGames = () => streamPlayerPrivateAssignmentsParallel({
+        assignments: schedule({ train: 3, validation: 0, test: 0 }),
+        workers: 1,
+        windowSize: 2,
+        policy,
+        maxPlies: 1,
+      });
+      const control = await writePlayerPrivateSplitTraceFileAtomic(
+        withoutProgress,
+        "train",
+        createGames(),
+      );
+      const progress: {
+        readonly split: string;
+        readonly games: number;
+        readonly bytes: number;
+      }[] = [];
+      const observed = await writePlayerPrivateSplitTraceFileAtomic(
+        withProgress,
+        "train",
+        createGames(),
+        {
+          onProgress: (entry) => {
+            progress.push(entry);
+          },
+        },
+      );
+
+      expect(await readFile(withProgress)).toEqual(
+        await readFile(withoutProgress),
+      );
+      expect(observed.sha256).toBe(control.sha256);
+      expect(observed.bytes).toBe(control.bytes);
+      expect(progress).toHaveLength(3);
+      expect(progress.at(-1)).toEqual({
+        split: "train",
+        games: 3,
+        bytes: observed.bytes,
+      });
+    },
+    30_000,
+  );
+
+  it("does not create output for a pre-aborted write", async () => {
+    const path = temporaryPath("pre-aborted");
+    const controller = new AbortController();
+    controller.abort(new Error("Synthetic pre-aborted write."));
+    const games = streamPlayerPrivateAssignmentsParallel({
+      assignments: schedule({ train: 1, validation: 0, test: 0 }),
+      workers: 1,
+      windowSize: 1,
+      policy,
+      maxPlies: 1,
+      signal: controller.signal,
+    });
+
+    await expect(writePlayerPrivateSplitTraceFileAtomic(
+      path,
+      "train",
+      games,
+      { signal: controller.signal },
+    )).rejects.toThrow("Synthetic pre-aborted write");
+    await expectPrivateOutputAbsent(path);
+  });
+
+  it("removes partial output when interrupted after progress", async () => {
+    const path = temporaryPath("aborted-after-progress");
+    const controller = new AbortController();
+    const games = streamPlayerPrivateAssignmentsParallel({
+      assignments: schedule({ train: 3, validation: 0, test: 0 }),
+      workers: 1,
+      windowSize: 1,
+      policy,
+      maxPlies: 1,
+      signal: controller.signal,
+    });
+
+    await expect(writePlayerPrivateSplitTraceFileAtomic(
+      path,
+      "train",
+      games,
+      {
+        signal: controller.signal,
+        onProgress: ({ games: writtenGames }) => {
+          if (writtenGames === 1) {
+            controller.abort(new Error("Synthetic active write abort."));
+          }
+        },
+      },
+    )).rejects.toThrow("Synthetic active write abort");
+    await expectPrivateOutputAbsent(path);
+  }, 30_000);
 });
+
+async function expectPrivateOutputAbsent(path: string): Promise<void> {
+  await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(
+    (await readdir(dirname(path))).some((entry) =>
+      entry.startsWith(`${basename(path)}.tmp-`)
+    ),
+  ).toBe(false);
+}
 
 function schedule(splitCounts: {
   readonly train: number;

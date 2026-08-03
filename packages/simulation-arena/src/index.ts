@@ -48,6 +48,10 @@ export {
   simulatePlayerPrivateAssignmentsParallel,
 } from "./player-private-parallel.js";
 export {
+  PlayerPrivateWorkerPoolCleanupError,
+  PlayerPrivateWorkerPoolCreationError,
+} from "./player-private-worker-pool.js";
+export {
   createPlayerPrivateAssignmentSchedule,
   PLAYER_PRIVATE_DATA_SPLITS,
 } from "./player-private-assignment-scheduler.js";
@@ -73,6 +77,7 @@ export {
 export type {
   PlayerPrivateOpponentHypothesisPolicy,
   PlayerPrivateAssignmentBatchRequest,
+  PlayerPrivateEvaluatorPolicy,
   PlayerPrivateGameAssignment,
   PlayerPrivateSearchPolicy,
   PlayerPrivateWorkerRequest,
@@ -127,6 +132,7 @@ export type {
   PreparedExecutableRuleId,
 } from "./prepared-catalog.js";
 export {
+  PreparedEvaluatorCleanupError,
   simulateBatchParallel,
   simulateCatalogBatchParallel,
   simulateCatalogSeedsParallel,

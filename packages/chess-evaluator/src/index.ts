@@ -9,6 +9,7 @@ export type {
 export {
   DRAWBACKCHESS_FAIRY_VARIANT,
   DRAWBACKCHESS_FAIRY_VARIANT_SHA256,
+  FairyStockfishLeafEvaluatorCloseError,
   initializeAuthenticatedFairyStockfishLeafEvaluator,
   initializeFairyStockfishLeafEvaluator,
   UnsupportedFairyStockfishLeafError,
@@ -19,9 +20,13 @@ export type {
   InitializedFairyStockfishLeafEvaluator,
 } from "./fairy-stockfish-leaf-evaluator.js";
 export {
+  AuthenticatedNodeUciEngineCloseError,
   AuthenticatedNodeUciEngineError,
   createAuthenticatedNodeUciEngine,
+  deriveUciEvaluationContextDigest,
   digestUciOptionDeclarations,
+  IncompleteSameOwnerCleanupError,
+  throwAfterSameOwnerCleanup,
   UciExecutableIntegrityError,
 } from "./authenticated-node-uci-engine.js";
 export type {
@@ -33,6 +38,8 @@ export type {
 export {
   createOwnedNodeUciLeafEvaluator,
   deriveNodeUciLeafEvaluatorId,
+  EMPTY_UCI_RUNTIME_CONTEXT_SHA256,
+  NodeUciLeafEvaluatorCloseError,
   NodeUciLeafEvaluatorFactoryError,
 } from "./node-uci-leaf-evaluator-factory.js";
 export type {
@@ -75,8 +82,12 @@ export type {
 } from "./node-turn-constraint-provider-factory.js";
 export { parseBestMove, parseInfo } from "./parser.js";
 export {
+  errorProvesUciProcessTerminated,
+  UciProcessExitError,
   UciProtocolError,
+  UciProcessTerminationError,
   UciTimeoutError,
+  UciTransportError,
 } from "./types.js";
 export {
   COMPLETED_PGN_EVALUATOR_SIDECAR_FORMAT,
@@ -105,6 +116,7 @@ export type {
 } from "./turn-constraint-provider.js";
 export type {
   UciClientOptions,
+  UciControlOptions,
   UciEngineIdentity,
   UciEvaluationOptions,
   UciOptionSetting,

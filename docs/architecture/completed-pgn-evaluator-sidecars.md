@@ -17,11 +17,18 @@ Configure a pinned Stockfish executable:
 $env:STOCKFISH_PATH = "C:\path\to\stockfish.exe"
 $env:STOCKFISH_UCI_NAME = "Stockfish 18"
 $env:STOCKFISH_VERSION = "18"
+$env:STOCKFISH_RUNTIME_CONTEXT_SHA256 = "<lowercase SHA-256 of the canonical runtime manifest>"
+$env:STOCKFISH_ADVERTISED_OPTIONS_SHA256 = "<lowercase SHA-256 of exact ordered UCI option lines>"
 
 pnpm --filter @drawbackengine/cli pgn:evaluator-sidecar -- `
   completed-game.pgn `
   completed-game.sidecar.json
 ```
+
+The runtime manifest pins semantic process arguments plus every
+evaluation-affecting file resolved from the working directory. A self-contained
+binary with no semantic arguments uses the canonical empty manifest `[]`.
+Changing this manifest changes cache keys and the public engine fingerprint.
 
 The generator:
 

@@ -23,6 +23,8 @@ import {
   sep,
 } from "node:path";
 import type { UciClient } from "./client.js";
+import { throwAfterSameOwnerCleanup } from "./authenticated-node-uci-engine.js";
+import { errorProvesUciProcessTerminated } from "./types.js";
 import type {
   UciScore,
 } from "./types.js";
@@ -137,6 +139,18 @@ export class FairyStockfishLeafEvaluatorError extends Error {
   }
 }
 
+export class FairyStockfishLeafEvaluatorCloseError extends Error {
+  public constructor(
+    message: string,
+    public readonly privateVariantRemoved: boolean,
+    public readonly processTerminated: boolean,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "FairyStockfishLeafEvaluatorCloseError";
+  }
+}
+
 function validateVariantPath(variantPath: string): void {
   if (
     variantPath.length === 0
@@ -231,13 +245,12 @@ async function initializeFairyStockfishLeafEvaluatorFromBytes(
       privateConfig.variantPath,
     );
   } catch (error: unknown) {
-    try {
-      await options.client.close();
-    } catch {
-      // Preserve the authentication or UCI error that made the client unsafe.
-    }
-    await removePrivateVariantConfig(privateConfig);
-    throw error;
+    return throwAfterSameOwnerCleanup(
+      error,
+      () => closeFairyResources(options.client, privateConfig),
+      "Fairy-Stockfish initialization failed and private cleanup encountered failures.",
+      fairyCleanupProvesComplete,
+    );
   }
 
   let queue: Promise<void> = Promise.resolve();
@@ -270,15 +283,27 @@ async function initializeFairyStockfishLeafEvaluatorFromBytes(
         return closePromise;
       }
       closed = true;
-      closePromise = (async () => {
+      const attempt = (async () => {
         await queue;
-        try {
-          await options.client.close();
-        } finally {
-          await removePrivateVariantConfig(privateConfig);
-        }
+        await closeFairyResources(options.client, privateConfig);
       })();
-      return closePromise;
+      closePromise = attempt;
+      void attempt.then(
+        () => undefined,
+        (error: unknown) => {
+          if (
+            closePromise === attempt
+            && error instanceof FairyStockfishLeafEvaluatorCloseError
+            && (
+              !error.privateVariantRemoved
+              || !error.processTerminated
+            )
+          ) {
+            closePromise = null;
+          }
+        },
+      );
+      return attempt;
     },
   };
 }
@@ -332,12 +357,62 @@ async function materializePrivateVariantConfig(
     await chmod(directoryPath, 0o500);
     return Object.freeze({ directoryPath, variantPath });
   } catch (error: unknown) {
-    await removePrivateVariantConfig({
-      directoryPath: createdDirectoryPath,
-      variantPath: join(createdDirectoryPath, "drawbackchess.ini"),
-    });
-    throw error;
+    return throwAfterSameOwnerCleanup(
+      error,
+      () => removePrivateVariantConfig({
+        directoryPath: createdDirectoryPath,
+        variantPath: join(createdDirectoryPath, "drawbackchess.ini"),
+      }),
+      "Fairy-Stockfish variant staging failed and private cleanup encountered failures.",
+    );
   }
+}
+
+async function closeFairyResources(
+  client: UciClient,
+  privateConfig: PrivateFairyVariantConfig,
+): Promise<void> {
+  let clientFailure: unknown;
+  let cleanupFailure: unknown;
+  try {
+    await client.close();
+  } catch (error: unknown) {
+    clientFailure = error;
+  }
+  try {
+    await removePrivateVariantConfig(privateConfig);
+  } catch (error: unknown) {
+    cleanupFailure = error;
+  }
+  const failures = [clientFailure, cleanupFailure].filter(
+    (failure) => failure !== undefined,
+  );
+  if (failures.length > 0) {
+    const privateVariantRemoved = cleanupFailure === undefined;
+    throw new FairyStockfishLeafEvaluatorCloseError(
+      privateVariantRemoved
+        ? "Fairy-Stockfish shutdown failed after private variant cleanup."
+        : "Fairy-Stockfish shutdown or private variant cleanup failed.",
+      privateVariantRemoved,
+      clientFailure === undefined
+        || errorProvesUciProcessTerminated(clientFailure),
+      {
+        cause:
+          failures.length === 1
+            ? failures[0]
+            : new AggregateError(
+                failures,
+                "Fairy-Stockfish shutdown and private variant cleanup both failed.",
+              ),
+      },
+    );
+  }
+}
+
+function fairyCleanupProvesComplete(error: unknown): boolean {
+  return error instanceof FairyStockfishLeafEvaluatorCloseError
+    && error.privateVariantRemoved
+    && error.processTerminated;
 }
 
 async function assertNoSymbolicLinkParents(
@@ -384,13 +459,28 @@ async function evaluateLeaf(
     );
   }
   const rootMoves = exactRootMoves(position);
-  await options.client.reset();
+  await options.client.reset(
+    signal === undefined ? {} : { signal },
+  );
   const evaluation = await options.client.evaluateFen(
     position.fen,
     { depth: options.depth },
     rootMoves,
     { ...(signal === undefined ? {} : { signal }) },
   );
+  if (evaluation.bestMove === null) {
+    throw new FairyStockfishLeafEvaluatorError(
+      "Fairy-Stockfish returned no move for a non-terminal exact leaf request.",
+    );
+  }
+  if (
+    evaluation.depth === null
+    || evaluation.depth < options.depth
+  ) {
+    throw new FairyStockfishLeafEvaluatorError(
+      "Fairy-Stockfish did not complete the requested fixed-depth leaf search.",
+    );
+  }
   if (evaluation.score === null || evaluation.score.bound !== "exact") {
     throw new FairyStockfishLeafEvaluatorError(
       "Fairy-Stockfish did not return an exact score for the exact leaf request.",

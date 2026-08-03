@@ -5,11 +5,14 @@ import type {
   LeafPosition,
 } from "@drawbackengine/drawback-search";
 import {
+  AuthenticatedNodeUciEngineCloseError,
   createAuthenticatedNodeUciEngine,
   type SerializableUciEngineIdentity,
+  throwAfterSameOwnerCleanup,
 } from "./authenticated-node-uci-engine.js";
 import {
   DRAWBACKCHESS_FAIRY_VARIANT_SHA256,
+  FairyStockfishLeafEvaluatorCloseError,
   initializeAuthenticatedFairyStockfishLeafEvaluator,
 } from "./fairy-stockfish-leaf-evaluator.js";
 import type { NodeProcessTransportOptions } from "./node-process-transport.js";
@@ -17,6 +20,8 @@ import { createStockfishLeafEvaluator } from "./stockfish-leaf-evaluator.js";
 import type { UciOptionSetting } from "./types.js";
 
 const FACTORY_FORMAT = "drawback-node-uci-leaf/v1";
+export const EMPTY_UCI_RUNTIME_CONTEXT_SHA256 =
+  "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945";
 
 interface NodeUciLeafEvaluatorConfigBase {
   readonly process: NodeProcessTransportOptions & {
@@ -26,6 +31,12 @@ interface NodeUciLeafEvaluatorConfigBase {
     readonly cwd: string;
     /** Explicit process shutdown deadline included in run provenance. */
     readonly shutdownTimeoutMs: number;
+    /**
+     * Caller-pinned digest of every evaluation-affecting runtime asset or
+     * environment input referenced by cwd or process arguments. Self-contained
+     * embedded-engine builds use the canonical empty-context digest.
+     */
+    readonly runtimeContextSha256: string;
   };
   readonly client: {
     /** Explicit protocol deadline included in run provenance. */
@@ -100,30 +111,46 @@ export async function createOwnedNodeUciLeafEvaluator(
       options: derived.fixedOptions,
     },
     engineIdentity: config.engineIdentity,
-    optionsDigest: derived.runtimeConfigDigest,
+    optionsDigest: derived.fixedOptionsDigest,
     advertisedOptionsSha256:
       config.engineIdentity.advertisedOptionsSha256,
   });
 
   if (config.kind === "stockfish") {
-    const evaluator = createStockfishLeafEvaluator({
-      client: engine.client,
-      depth: config.depth,
-      id: derived.id,
-    });
-    return ownBorrowedEvaluator(evaluator, () => engine.close());
+    try {
+      const evaluator = createStockfishLeafEvaluator({
+        client: engine.client,
+        depth: config.depth,
+        id: derived.id,
+      });
+      return ownBorrowedEvaluator(evaluator, () => engine.close());
+    } catch (error: unknown) {
+      return throwAfterSameOwnerCleanup(
+        error,
+        () => engine.close(),
+        "UCI evaluator construction failed and authenticated cleanup encountered failures.",
+      );
+    }
   }
 
   try {
-    return await initializeAuthenticatedFairyStockfishLeafEvaluator({
-      client: engine.client,
-      depth: config.depth,
-      variant: config.fairyVariant,
-      id: derived.id,
-    });
+    const evaluator =
+      await initializeAuthenticatedFairyStockfishLeafEvaluator({
+        client: engine.client,
+        depth: config.depth,
+        variant: config.fairyVariant,
+        id: derived.id,
+      });
+    return ownBorrowedEvaluator(
+      evaluator,
+      () => closeFairyRuntime(evaluator, () => engine.close()),
+    );
   } catch (error: unknown) {
-    await engine.close().catch(() => undefined);
-    throw error;
+    return throwAfterSameOwnerCleanup(
+      error,
+      () => engine.close(),
+      "UCI evaluator construction failed and authenticated cleanup encountered failures.",
+    );
   }
 }
 
@@ -133,6 +160,7 @@ type ValidatedConfig =
       readonly executableSha256: string;
       readonly cwd: string;
       readonly shutdownTimeoutMs: number;
+      readonly runtimeContextSha256: string;
     };
     readonly engineIdentity:
       & SerializableUciEngineIdentity
@@ -199,6 +227,10 @@ function validateAndCopyConfig(
     shutdownTimeoutMs: positiveInteger(
       input.process.shutdownTimeoutMs,
       "UCI shutdown timeout",
+    ),
+    runtimeContextSha256: sha256Digest(
+      input.process.runtimeContextSha256,
+      "UCI runtime context SHA-256",
     ),
   };
   const engineIdentity = {
@@ -281,7 +313,6 @@ interface DerivedNodeUciLeafIdentity {
   readonly id: string;
   readonly fixedOptions: readonly UciOptionSetting[];
   readonly fixedOptionsDigest: string;
-  readonly runtimeConfigDigest: string;
 }
 
 function deriveValidatedIdentity(
@@ -289,19 +320,13 @@ function deriveValidatedIdentity(
 ): DerivedNodeUciLeafIdentity {
   const fixedOptions = fixedUciOptions(config.kind, config.hashMb);
   const fixedOptionsDigest = digestFixedUciOptions(fixedOptions);
-  const runtimeConfigDigest = digestLeafConfiguration(
-    config,
-    fixedOptionsDigest,
-  );
   return Object.freeze({
     id: publicEvaluatorId(
       config,
       fixedOptionsDigest,
-      runtimeConfigDigest,
     ),
     fixedOptions,
     fixedOptionsDigest,
-    runtimeConfigDigest,
   });
 }
 
@@ -318,38 +343,9 @@ function digestFixedUciOptions(
     .digest("hex");
 }
 
-function digestLeafConfiguration(
-  config: ValidatedConfig,
-  fixedOptionsDigest: string,
-): string {
-  return createHash("sha256")
-    .update(JSON.stringify({
-      format: FACTORY_FORMAT,
-      kind: config.kind,
-      process: {
-        executablePath: config.process.executablePath,
-        args: config.process.args ?? [],
-        cwd: config.process.cwd,
-        shutdownTimeoutMs: config.process.shutdownTimeoutMs,
-      },
-      client: {
-        timeoutMs: config.timeoutMs,
-      },
-      fixedOptionsDigest,
-      depth: config.depth,
-      fairyVariantSha256:
-        config.kind === "fairy-stockfish"
-          ? config.fairyVariant.sha256
-          : null,
-      unsupportedPosition: config.unsupportedPosition,
-    }), "utf8")
-    .digest("hex");
-}
-
 function publicEvaluatorId(
   config: ValidatedConfig,
   fixedOptionsDigest: string,
-  runtimeConfigDigest: string,
 ): string {
   const engineDigest = createHash("sha256")
     .update(JSON.stringify({
@@ -362,7 +358,8 @@ function publicEvaluatorId(
       advertisedOptionsSha256:
         config.engineIdentity.advertisedOptionsSha256,
       fixedOptionsDigest,
-      runtimeConfigDigest,
+      processArguments: config.process.args ?? [],
+      runtimeContextSha256: config.process.runtimeContextSha256,
       depth: config.depth,
       fairyVariantSha256:
         config.kind === "fairy-stockfish"
@@ -403,13 +400,128 @@ function ownBorrowedEvaluator(
         return closePromise;
       }
       closed = true;
-      closePromise = (async () => {
+      const attempt = (async () => {
         await queue;
-        await closeEngine();
+        try {
+          await closeEngine();
+        } catch (error: unknown) {
+          if (error instanceof NodeUciLeafEvaluatorCloseError) {
+            throw error;
+          }
+          throw new NodeUciLeafEvaluatorCloseError(
+            "Node UCI leaf evaluator shutdown failed.",
+            privateResourcesRemoved(error),
+            processTerminated(error),
+            { cause: error },
+          );
+        }
       })();
-      return closePromise;
+      closePromise = attempt;
+      void attempt.then(
+        () => undefined,
+        (error: unknown) => {
+          if (
+            closePromise === attempt
+            && error instanceof NodeUciLeafEvaluatorCloseError
+            && (
+              !error.privateResourcesRemoved
+              || !error.processTerminated
+            )
+          ) {
+            closePromise = null;
+          }
+        },
+      );
+      return attempt;
     },
   };
+}
+
+export class NodeUciLeafEvaluatorCloseError extends Error {
+  public constructor(
+    message: string,
+    public readonly privateResourcesRemoved: boolean,
+    public readonly processTerminated: boolean,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "NodeUciLeafEvaluatorCloseError";
+  }
+}
+
+async function closeFairyRuntime(
+  evaluator: {
+    close(): Promise<void>;
+  },
+  closeEngine: () => Promise<void>,
+): Promise<void> {
+  let evaluatorFailure: unknown;
+  let engineFailure: unknown;
+  try {
+    await evaluator.close();
+  } catch (error: unknown) {
+    evaluatorFailure = error;
+  }
+  try {
+    await closeEngine();
+  } catch (error: unknown) {
+    engineFailure = error;
+  }
+  const failures = [evaluatorFailure, engineFailure].filter(
+    (failure) => failure !== undefined,
+  );
+  if (failures.length > 0) {
+    const resourcesRemoved =
+      privateVariantRemoved(evaluatorFailure)
+      && privateExecutableRemoved(engineFailure);
+    throw new NodeUciLeafEvaluatorCloseError(
+      resourcesRemoved
+        ? "Fairy evaluator shutdown failed after private resource cleanup."
+        : "Fairy evaluator shutdown or private resource cleanup failed.",
+      resourcesRemoved,
+      processTerminated(engineFailure),
+      {
+        cause:
+          failures.length === 1
+            ? failures[0]
+            : new AggregateError(
+                failures,
+                "Fairy evaluator and authenticated engine cleanup both failed.",
+              ),
+      },
+    );
+  }
+}
+
+function privateResourcesRemoved(error: unknown): boolean {
+  return (
+    error instanceof AuthenticatedNodeUciEngineCloseError
+    && error.privateExecutableRemoved
+  );
+}
+
+function processTerminated(error: unknown): boolean {
+  return error === undefined
+    || (
+      error instanceof AuthenticatedNodeUciEngineCloseError
+      && error.processTerminated
+    );
+}
+
+function privateVariantRemoved(error: unknown): boolean {
+  return error === undefined
+    || (
+      error instanceof FairyStockfishLeafEvaluatorCloseError
+      && error.privateVariantRemoved
+    );
+}
+
+function privateExecutableRemoved(error: unknown): boolean {
+  return error === undefined
+    || (
+      error instanceof AuthenticatedNodeUciEngineCloseError
+      && error.privateExecutableRemoved
+    );
 }
 
 function authenticateFairyVariant(
@@ -459,10 +571,7 @@ function requiredAbsolutePath(value: unknown, label: string): string {
   if (!isAbsolute(path)) {
     throw new RangeError(`${label} must be absolute.`);
   }
-  const normalized = normalize(path);
-  return process.platform === "win32"
-    ? normalized.toLowerCase()
-    : normalized;
+  return normalize(path);
 }
 
 function fingerprintComponent(value: unknown, label: string): string {

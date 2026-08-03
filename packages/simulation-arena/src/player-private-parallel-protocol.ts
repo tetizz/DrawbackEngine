@@ -11,6 +11,30 @@ import {
 import type {
   PlayerPrivateOpponentAggregation,
 } from "@drawbackengine/drawback-search";
+import {
+  deriveNodeUciLeafEvaluatorId,
+  type NodeUciLeafEvaluatorConfig,
+} from "@drawbackengine/chess-evaluator";
+
+export type PlayerPrivateEvaluatorPolicy =
+  | {
+      readonly kind: "material";
+      readonly version: 1;
+    }
+  | {
+      readonly kind: "node-uci-leaf";
+      readonly version: 1;
+      /** Purely derived path-free identity; its configuration stays parent-only. */
+      readonly evaluatorId: string;
+      readonly config: NodeUciLeafEvaluatorConfig;
+    };
+
+export type PlayerPrivateWorkerEvaluatorPolicy =
+  | Extract<PlayerPrivateEvaluatorPolicy, { readonly kind: "material" }>
+  | Omit<
+      Extract<PlayerPrivateEvaluatorPolicy, { readonly kind: "node-uci-leaf" }>,
+      "config"
+    >;
 
 export interface PlayerPrivateSearchPolicy {
   readonly policyId: string;
@@ -21,12 +45,26 @@ export interface PlayerPrivateSearchPolicy {
   readonly leafCacheEntries?: number;
   readonly leafCacheHistoryMode?: "full" | "ignore";
   readonly opponentAggregation?: PlayerPrivateOpponentAggregation;
-  readonly evaluator: {
-    readonly kind: "material";
-    readonly version: 1;
-  };
+  readonly evaluator: PlayerPrivateEvaluatorPolicy;
   readonly opponentHypotheses: PlayerPrivateOpponentHypothesisPolicy;
 }
+
+export type PlayerPrivateWorkerSearchPolicy = Omit<
+  PlayerPrivateSearchPolicy,
+  "evaluator"
+> & {
+  readonly evaluator: PlayerPrivateWorkerEvaluatorPolicy;
+};
+
+export type PlayerPrivateLegacySearchPolicy = Omit<
+  PlayerPrivateSearchPolicy,
+  "evaluator"
+> & {
+  readonly evaluator: Extract<
+    PlayerPrivateEvaluatorPolicy,
+    { readonly kind: "material" }
+  >;
+};
 
 export type PlayerPrivateOpponentHypothesisPolicy =
   | {
@@ -70,7 +108,7 @@ export interface PlayerPrivateWorkerRequest {
   readonly schemaVersion: 1;
   readonly kind: "player-private-assignments";
   readonly assignedGames: readonly IndexedPlayerPrivateAssignment[];
-  readonly policy: PlayerPrivateSearchPolicy;
+  readonly policy: PlayerPrivateLegacySearchPolicy;
   readonly maxPlies?: number;
 }
 
@@ -103,7 +141,7 @@ export function assertPlayerPrivateWorkerRequest(
     assertPositiveSafeInteger(request["maxPlies"] as number, "maxPlies");
   }
   assertExactKeys(request, expected, "player-private worker request");
-  assertPlayerPrivateSearchPolicy(request["policy"]);
+  assertPlayerPrivateLegacySearchPolicy(request["policy"]);
   assertIndexedPlayerPrivateAssignments(request["assignedGames"]);
 }
 
@@ -213,6 +251,34 @@ export function assertPlayerPrivateGameAssignment(value: unknown): void {
 }
 
 export function assertPlayerPrivateSearchPolicy(value: unknown): void {
+  assertSearchPolicyWithEvaluator(value, assertPlayerPrivateEvaluatorPolicy);
+}
+
+export function assertPlayerPrivateLegacySearchPolicy(value: unknown): void {
+  const policy = protocolRecord(value, "legacy player-private search policy");
+  const evaluator = protocolRecord(
+    policy["evaluator"],
+    "legacy player-private evaluator",
+  );
+  if (evaluator["kind"] !== "material") {
+    throw new TypeError(
+      "Legacy workers accept only the path-free material evaluator.",
+    );
+  }
+  assertSearchPolicyWithEvaluator(value, assertPlayerPrivateEvaluatorPolicy);
+}
+
+export function assertPlayerPrivateWorkerSearchPolicy(value: unknown): void {
+  assertSearchPolicyWithEvaluator(
+    value,
+    assertPlayerPrivateWorkerEvaluatorPolicy,
+  );
+}
+
+function assertSearchPolicyWithEvaluator(
+  value: unknown,
+  assertEvaluator: (candidate: unknown) => void,
+): void {
   const policy = protocolRecord(value, "player-private search policy");
   const expected = [
     "policyId",
@@ -278,14 +344,7 @@ export function assertPlayerPrivateSearchPolicy(value: unknown): void {
   ) {
     throw new RangeError("temperatureCp must be finite and positive.");
   }
-  const evaluator = protocolRecord(policy["evaluator"], "policy evaluator");
-  assertExactKeys(evaluator, ["kind", "version"], "policy evaluator");
-  if (
-    evaluator["kind"] !== "material"
-    || evaluator["version"] !== 1
-  ) {
-    throw new TypeError("Only material evaluator v1 is supported.");
-  }
+  assertEvaluator(policy["evaluator"]);
   const opponent = protocolRecord(
     policy["opponentHypotheses"],
     "opponent hypothesis policy",
@@ -306,6 +365,151 @@ export function assertPlayerPrivateSearchPolicy(value: unknown): void {
       "Only unrestricted-baseline or audited-uniform opponent hypotheses v1 are supported.",
     );
   }
+}
+
+function assertPlayerPrivateEvaluatorPolicy(
+  value: unknown,
+): asserts value is PlayerPrivateEvaluatorPolicy {
+  const evaluator = protocolRecord(value, "policy evaluator");
+  if (evaluator["kind"] === "material") {
+    assertExactKeys(evaluator, ["kind", "version"], "policy evaluator");
+    if (evaluator["version"] !== 1) {
+      throw new TypeError("Only material evaluator v1 is supported.");
+    }
+    return;
+  }
+  assertExactKeys(
+    evaluator,
+    ["kind", "version", "evaluatorId", "config"],
+    "policy evaluator",
+  );
+  if (
+    evaluator["kind"] !== "node-uci-leaf"
+    || evaluator["version"] !== 1
+    || typeof evaluator["evaluatorId"] !== "string"
+    || !/^node-uci-leaf\/v1\/[0-9a-f]{64}$/u.test(
+      evaluator["evaluatorId"],
+    )
+  ) {
+    throw new TypeError("Node UCI leaf evaluator policy v1 is invalid.");
+  }
+  const config = assertExactNodeUciLeafConfig(evaluator["config"]);
+  const derived = deriveNodeUciLeafEvaluatorId(config);
+  if (derived !== evaluator["evaluatorId"]) {
+    throw new TypeError(
+      "Node UCI leaf evaluator ID does not match its pinned configuration.",
+    );
+  }
+}
+
+function assertPlayerPrivateWorkerEvaluatorPolicy(value: unknown): void {
+  const evaluator = protocolRecord(value, "worker policy evaluator");
+  if (evaluator["kind"] === "material") {
+    assertExactKeys(
+      evaluator,
+      ["kind", "version"],
+      "worker policy evaluator",
+    );
+    if (evaluator["version"] !== 1) {
+      throw new TypeError("Only material worker evaluator v1 is supported.");
+    }
+    return;
+  }
+  assertExactKeys(
+    evaluator,
+    ["kind", "version", "evaluatorId"],
+    "worker policy evaluator",
+  );
+  if (
+    evaluator["kind"] !== "node-uci-leaf"
+    || evaluator["version"] !== 1
+    || typeof evaluator["evaluatorId"] !== "string"
+    || !/^node-uci-leaf\/v1\/[0-9a-f]{64}$/u.test(evaluator["evaluatorId"])
+  ) {
+    throw new TypeError("Node UCI worker evaluator descriptor is invalid.");
+  }
+}
+
+function assertExactNodeUciLeafConfig(
+  value: unknown,
+): NodeUciLeafEvaluatorConfig {
+  const config = protocolRecord(value, "Node UCI leaf configuration");
+  const kind = config["kind"];
+  if (kind !== "stockfish" && kind !== "fairy-stockfish") {
+    throw new TypeError("Node UCI leaf engine kind is invalid.");
+  }
+  const expected = [
+    "kind",
+    "process",
+    "client",
+    "engineIdentity",
+    "depth",
+    "hashMb",
+    "unsupportedPosition",
+  ];
+  if (kind === "fairy-stockfish") {
+    expected.push("fairyVariant");
+  }
+  assertExactKeys(config, expected, "Node UCI leaf configuration");
+
+  const processConfig = protocolRecord(
+    config["process"],
+    "Node UCI process configuration",
+  );
+  const processKeys = [
+    "executablePath",
+    "executableSha256",
+    "cwd",
+    "shutdownTimeoutMs",
+    "runtimeContextSha256",
+  ];
+  if (processConfig["args"] !== undefined) {
+    processKeys.push("args");
+    if (
+      !Array.isArray(processConfig["args"])
+      || processConfig["args"].some((argument) =>
+        typeof argument !== "string"
+      )
+    ) {
+      throw new TypeError("Node UCI process arguments are invalid.");
+    }
+  }
+  assertExactKeys(
+    processConfig,
+    processKeys,
+    "Node UCI process configuration",
+  );
+  const client = protocolRecord(
+    config["client"],
+    "Node UCI client configuration",
+  );
+  assertExactKeys(client, ["timeoutMs"], "Node UCI client configuration");
+  const identity = protocolRecord(
+    config["engineIdentity"],
+    "Node UCI engine identity",
+  );
+  assertExactKeys(
+    identity,
+    ["uciName", "engine", "version", "advertisedOptionsSha256"],
+    "Node UCI engine identity",
+  );
+  if (kind === "fairy-stockfish") {
+    const variant = protocolRecord(
+      config["fairyVariant"],
+      "Fairy-Stockfish variant",
+    );
+    assertExactKeys(
+      variant,
+      ["bytes", "sha256"],
+      "Fairy-Stockfish variant",
+    );
+    if (!(variant["bytes"] instanceof Uint8Array)) {
+      throw new TypeError(
+        "Fairy-Stockfish variant bytes must be a Uint8Array.",
+      );
+    }
+  }
+  return config as unknown as NodeUciLeafEvaluatorConfig;
 }
 
 export function assertPositiveSafeInteger(

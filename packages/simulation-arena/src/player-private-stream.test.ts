@@ -12,6 +12,9 @@ import {
 import {
   simulatePlayerPrivateAssignmentsParallel,
 } from "./player-private-parallel.js";
+import {
+  PlayerPrivateWorkerPoolCleanupError,
+} from "./player-private-worker-pool.js";
 import type {
   PlayerPrivateSearchPolicy,
 } from "./player-private-parallel-protocol.js";
@@ -131,6 +134,29 @@ describe("streaming player-private parallel simulation", () => {
     30_000,
   );
 
+  it(
+    "closes a real worker pool when aborted while suspended after a result",
+    async () => {
+      const controller = new AbortController();
+      const iterator = streamPlayerPrivateAssignmentsParallel({
+        assignments: schedule(2),
+        workers: 1,
+        windowSize: 1,
+        policy,
+        maxPlies: 1,
+        signal: controller.signal,
+      })[Symbol.asyncIterator]();
+
+      expect((await iterator.next()).done).toBe(false);
+      controller.abort(new Error("Synthetic post-result interruption."));
+      await expect(iterator.return?.()).resolves.toEqual({
+        done: true,
+        value: undefined,
+      });
+    },
+    30_000,
+  );
+
   it("rejects a non-contiguous or reordered schedule before simulation", async () => {
     const assignments = [...schedule(2)];
     const second = assignments[1];
@@ -157,6 +183,50 @@ describe("streaming player-private parallel simulation", () => {
       }
     };
     await expect(consume()).rejects.toThrow("contiguous increasing");
+  });
+
+  it("preserves a retained cleanup owner when iterator return also fails", async () => {
+    const retained = new PlayerPrivateWorkerPoolCleanupError(
+      [new Error("Worker cleanup remains incomplete.")],
+      "Worker cleanup remains incomplete.",
+      () => Promise.resolve(),
+      () => ({
+        configuredWorkers: 1,
+        launches: 1,
+        activeWorkers: 1,
+        peakActiveWorkers: 1,
+        completedTasks: 0,
+        retriedTasks: 0,
+      }),
+    );
+    const iteratorFailure = new Error("Iterator return failed.");
+    const assignments: Iterable<ScheduledPlayerPrivateAssignment> = {
+      [Symbol.iterator](): Iterator<ScheduledPlayerPrivateAssignment> {
+        return {
+          next(): IteratorResult<ScheduledPlayerPrivateAssignment> {
+            throw retained;
+          },
+          return(): IteratorResult<ScheduledPlayerPrivateAssignment> {
+            throw iteratorFailure;
+          },
+        };
+      },
+    };
+    const stream = streamPlayerPrivateAssignmentsParallel({
+      assignments,
+      workers: 1,
+      windowSize: 1,
+      policy,
+      maxPlies: 1,
+    })[Symbol.asyncIterator]();
+
+    const failure = await stream.next().catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toEqual([
+      retained,
+      iteratorFailure,
+    ]);
   });
 });
 

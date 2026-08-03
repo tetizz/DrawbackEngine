@@ -1,6 +1,7 @@
 import {
   createAuthenticatedNodeUciEngine,
   type SerializableUciEngineIdentity,
+  throwAfterSameOwnerCleanup,
   UciExecutableIntegrityError,
 } from "./authenticated-node-uci-engine.js";
 import type { ConstraintPolicyIdentity } from "./constraint-cache.js";
@@ -11,6 +12,7 @@ import {
 } from "./turn-constraint-provider.js";
 import type {
   UciClientOptions,
+  UciOptionSetting,
   UciSearchLimit,
 } from "./types.js";
 
@@ -21,11 +23,15 @@ export interface NodeUciTurnConstraintProviderConfig {
   readonly process: NodeProcessTransportOptions & {
     /** Expected SHA-256 of the executable file bytes, verified before spawn. */
     readonly executableSha256: string;
+    /** Digest of semantic arguments and every cwd-resolved runtime asset. */
+    readonly runtimeContextSha256: string;
   };
   readonly client?: UciClientOptions;
   readonly policy: {
     readonly identity: ConstraintPolicyIdentity;
     readonly engineIdentity: SerializableUciEngineIdentity;
+    /** Exact digest of the ordered UCI option declarations. */
+    readonly advertisedOptionsSha256: string;
     /**
      * Canonical caller-owned digest of every evaluation-affecting UCI option.
      * The factory deliberately does not infer or recompute this provenance.
@@ -36,9 +42,9 @@ export interface NodeUciTurnConstraintProviderConfig {
 }
 
 /**
- * Creates an initialized, process-backed constraint provider from data that can
- * cross a worker boundary. The returned provider owns the spawned process and
- * callers must dispose it.
+ * Creates an initialized, process-backed constraint provider in the process
+ * that owns the executable configuration. Private paths and process settings
+ * must not cross a worker boundary. Callers must dispose the returned owner.
  */
 export async function createNodeUciTurnConstraintProvider(
   input: NodeUciTurnConstraintProviderConfig,
@@ -51,21 +57,79 @@ export async function createNodeUciTurnConstraintProvider(
     ),
   };
   const limit = copyLimit(input.policy.limit);
+  assertDeterministicStockfishPolicy(
+    input.policy.engineIdentity,
+    input.client,
+  );
   const engine = await createAuthenticatedNodeUciEngine({
     process: input.process,
     ...(input.client === undefined ? {} : { client: input.client }),
     engineIdentity: input.policy.engineIdentity,
     optionsDigest: input.policy.optionsDigest,
+    advertisedOptionsSha256: input.policy.advertisedOptionsSha256,
   });
 
   try {
     return new UciTurnConstraintProvider({
       client: engine.client,
       policy: createProviderPolicy(identity, limit, engine),
+      dispose: () => engine.close(),
     });
   } catch (error: unknown) {
-    await engine.close().catch(() => undefined);
-    throw error;
+    return throwAfterSameOwnerCleanup(
+      error,
+      () => engine.close(),
+      "Constraint provider construction failed and authenticated cleanup encountered failures.",
+    );
+  }
+}
+
+function assertDeterministicStockfishPolicy(
+  identity: SerializableUciEngineIdentity,
+  client: UciClientOptions | undefined,
+): void {
+  if (identity.engine !== "stockfish") {
+    return;
+  }
+  const options = new Map<string, UciOptionSetting["value"]>();
+  for (const option of client?.options ?? []) {
+    const name = requiredText(option.name, "UCI option name");
+    const key = name.toLowerCase();
+    if (options.has(key)) {
+      throw new RangeError(`Duplicate deterministic UCI option ${name}.`);
+    }
+    options.set(key, option.value);
+  }
+  requireExactOption(options, "Threads", 1);
+  const hash = options.get("hash");
+  if (typeof hash !== "number" || !Number.isSafeInteger(hash) || hash <= 0) {
+    throw new RangeError(
+      "Deterministic Stockfish policy requires a positive integer Hash.",
+    );
+  }
+  requireExactOption(options, "Ponder", false);
+  requireExactOption(options, "MultiPV", 1);
+  requireExactOption(options, "UCI_Chess960", false);
+  requireExactOption(options, "UCI_LimitStrength", false);
+  requireExactOption(options, "Skill Level", 20);
+  requireExactOption(options, "SyzygyPath", "<empty>");
+  if (!options.has("clear hash") || options.get("clear hash") !== undefined) {
+    throw new RangeError(
+      "Deterministic Stockfish policy requires the Clear Hash button.",
+    );
+  }
+}
+
+function requireExactOption(
+  options: ReadonlyMap<string, UciOptionSetting["value"]>,
+  name: string,
+  value: string | number | boolean,
+): void {
+  const key = name.toLowerCase();
+  if (!options.has(key) || options.get(key) !== value) {
+    throw new RangeError(
+      `Deterministic Stockfish policy requires ${name}=${String(value)}.`,
+    );
   }
 }
 
@@ -84,21 +148,12 @@ function createProviderPolicy(
 }
 
 function copyLimit(limit: UciSearchLimit): UciSearchLimit {
-  if ("depth" in limit) {
-    return { depth: positiveInteger(limit.depth, "UCI search depth") };
-  }
-  if ("moveTimeMs" in limit) {
-    return {
-      moveTimeMs: positiveInteger(
-        limit.moveTimeMs,
-        "UCI search move time",
-      ),
-    };
-  }
   if ("nodes" in limit) {
     return { nodes: positiveInteger(limit.nodes, "UCI search node count") };
   }
-  throw new TypeError("UCI search limit has an unsupported shape.");
+  throw new TypeError(
+    "Deterministic turn constraints require a fixed node search limit.",
+  );
 }
 
 function requiredText(value: unknown, label: string): string {

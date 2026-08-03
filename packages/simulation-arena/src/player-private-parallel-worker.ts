@@ -1,13 +1,21 @@
 import { parentPort, workerData } from "node:worker_threads";
 import {
   drawbackMaterialEvaluator,
+  type DrawbackLeafEvaluator,
 } from "@drawbackengine/drawback-search";
-import { createPlayerPrivateSearchAgent } from "./player-private-agent.js";
+import {
+  UciTimeoutError,
+  UciTransportError,
+} from "@drawbackengine/chess-evaluator";
+import {
+  createPlayerPrivateSearchAgent,
+  type PlayerPrivateSimulationAgent,
+} from "./player-private-agent.js";
 import {
   assertPlayerPrivateWorkerRequest,
   protocolRecord,
   type IndexedPlayerPrivateAssignment,
-  type PlayerPrivateSearchPolicy,
+  type PlayerPrivateWorkerSearchPolicy,
   type PlayerPrivateWorkerRequest,
   type PlayerPrivateWorkerResponse,
 } from "./player-private-parallel-protocol.js";
@@ -16,6 +24,7 @@ import {
   assertPlayerPrivateWorkerShutdown,
   assertPlayerPrivateWorkerTask,
   type PlayerPrivateWorkerInitialization,
+  type PlayerPrivateWorkerInitializationFailure,
   type PlayerPrivateWorkerReady,
   type PlayerPrivateWorkerStopped,
   type PlayerPrivateWorkerTask,
@@ -35,10 +44,13 @@ import {
   findTransientParallelWorkerError,
   isTransientParallelWorkerError,
 } from "./worker-retry.js";
+import {
+  PlayerPrivateRemoteLeafEvaluator,
+} from "./player-private-remote-leaf-evaluator.js";
 
 async function runAssignedGames(
   assignedGames: readonly IndexedPlayerPrivateAssignment[],
-  policy: PlayerPrivateSearchPolicy,
+  policy: PlayerPrivateWorkerSearchPolicy,
   agent: ReturnType<typeof createAgent>,
   maxPlies?: number,
 ): Promise<PlayerPrivateWorkerResponse["games"]> {
@@ -70,10 +82,8 @@ async function runAssignedGames(
       const message =
         error instanceof Error ? error.message : "Unknown game failure.";
       const contextualMessage =
-        `Assignment ${String(gameIndex)} `
-          + `(${assignment.whiteRuleId} vs ${assignment.blackRuleId}) `
-          + `failed: ${message}`;
-      const transient = findTransientParallelWorkerError(error);
+        `Player-private assignment ${String(gameIndex)} failed: ${message}`;
+      const transient = findRetryableEvaluatorFailure(error);
       if (transient !== undefined) {
         throw new TransientParallelWorkerError(
           transient.code,
@@ -94,17 +104,22 @@ async function runLegacy(
   request: PlayerPrivateWorkerRequest,
 ): Promise<PlayerPrivateWorkerResponse> {
   assertPlayerPrivateWorkerRequest(request);
-  const games = await runAssignedGames(
-    request.assignedGames,
-    request.policy,
-    createAgent(request.policy),
-    request.maxPlies,
-  );
-  return Object.freeze({
-    schemaVersion: 1,
-    kind: "player-private-results",
-    games,
-  });
+  const runtime = createWorkerRuntime(request.policy);
+  try {
+    const games = await runAssignedGames(
+      request.assignedGames,
+      request.policy,
+      runtime.agent,
+      request.maxPlies,
+    );
+    return Object.freeze({
+      schemaVersion: 1,
+      kind: "player-private-results",
+      games,
+    });
+  } finally {
+    await runtime.close();
+  }
 }
 
 function runPersistent(
@@ -112,75 +127,163 @@ function runPersistent(
   port: NonNullable<typeof parentPort>,
 ): void {
   assertPlayerPrivateWorkerInitialization(initialization);
-  const agent = createAgent(initialization.policy);
   const identity = {
     poolId: initialization.poolId,
     workerId: initialization.workerId,
     generation: initialization.generation,
     authenticationToken: initialization.authenticationToken,
   } as const;
+  let runtime: WorkerRuntime;
+  try {
+    runtime = createWorkerRuntime(
+      initialization.policy,
+      port,
+      identity,
+    );
+  } catch (error: unknown) {
+    const transient = findRetryableEvaluatorFailure(error) !== undefined;
+    const failure = Object.freeze({
+      schemaVersion: 2,
+      kind: "player-private-worker-initialization-failure",
+      ...identity,
+      failure: Object.freeze({
+        code: transient
+          ? "evaluator-unavailable"
+          : "initialization-failed",
+        transient,
+        message: initializationFailureMessage(error, transient),
+      }),
+    } satisfies PlayerPrivateWorkerInitializationFailure);
+    port.postMessage(failure);
+    port.close();
+    return;
+  }
   const ready = Object.freeze({
     schemaVersion: 2,
     kind: "player-private-worker-ready",
     ...identity,
+    evaluatorId: runtime.evaluator.id,
   } satisfies PlayerPrivateWorkerReady);
   port.postMessage(ready);
 
   let busy = false;
   let stopped = false;
+  let activeTask: Promise<void> | undefined;
+  const finishShutdown = (
+    terminalFailure?: Error,
+  ): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    port.off("message", onMessage);
+    runtime.abort();
+    const pending = activeTask ?? Promise.resolve();
+    void pending
+      .then(() => runtime.close())
+      .then(() => {
+        if (terminalFailure !== undefined) {
+          port.close();
+          failWorker(terminalFailure);
+          return;
+        }
+        postStopped(port, identity);
+      })
+      .catch((error: unknown) => {
+        port.close();
+        failWorker(
+          terminalFailure === undefined
+            ? new Error(
+                "Player-private worker evaluator shutdown failed.",
+                { cause: error },
+              )
+            : new AggregateError(
+                [terminalFailure, error],
+                "Player-private worker failed and evaluator cleanup was incomplete.",
+              ),
+        );
+      });
+  };
   const onMessage = (value: unknown): void => {
     if (stopped) {
       return;
     }
-    if (busy) {
-      failWorker(new Error(
-        "Player-private worker received overlapping parent messages.",
-      ));
-      return;
+    try {
+      const record = protocolRecord(
+        value,
+        "player-private persistent worker message",
+      );
+      if (runtime.handleParentMessage(value)) {
+        return;
+      }
+      if (record["kind"] === "player-private-worker-shutdown") {
+        assertPlayerPrivateWorkerShutdown(value, identity);
+        finishShutdown();
+        return;
+      }
+      if (busy) {
+        finishShutdown(new Error(
+          "Player-private worker received overlapping parent messages.",
+        ));
+        return;
+      }
+      assertPlayerPrivateWorkerTask(value, identity);
+      busy = true;
+      runtime.beginTask(value);
+      const task = runPersistentTask(
+        value,
+        initialization,
+        runtime.agent,
+      )
+        .then((response) => {
+          if (!stopped) {
+            port.postMessage(response);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!stopped) {
+            const failure = createTaskFailure(value, identity, error);
+            port.postMessage(failure);
+          }
+        })
+        .finally(() => {
+          runtime.endTask(value);
+          busy = false;
+        });
+      activeTask = task;
+    } catch (error: unknown) {
+      finishShutdown(
+        error instanceof Error
+          ? error
+          : new Error("Player-private worker protocol validation failed."),
+      );
     }
-    const record = protocolRecord(
-      value,
-      "player-private persistent worker message",
-    );
-    if (record["kind"] === "player-private-worker-shutdown") {
-      assertPlayerPrivateWorkerShutdown(value, identity);
-      stopped = true;
-      const response = Object.freeze({
-        schemaVersion: 2,
-        kind: "player-private-worker-stopped",
-        ...identity,
-      } satisfies PlayerPrivateWorkerStopped);
-      port.postMessage(response);
-      port.off("message", onMessage);
-      port.close();
-      return;
-    }
-    assertPlayerPrivateWorkerTask(value, identity);
-    busy = true;
-    void runPersistentTask(value, initialization, agent)
-      .then((response) => {
-        if (!stopped) {
-          port.postMessage(response);
-        }
-      })
-      .catch((error: unknown) => {
-        if (!stopped) {
-          port.postMessage(
-            createTaskFailure(value, identity, error),
-          );
-        }
-      })
-      .finally(() => {
-        busy = false;
-      });
   };
   port.on("message", onMessage);
+}
+
+function postStopped(
+  port: NonNullable<typeof parentPort>,
+  identity: {
+    readonly poolId: string;
+    readonly workerId: number;
+    readonly generation: number;
+    readonly authenticationToken: string;
+  },
+): void {
+  const response = Object.freeze({
+    schemaVersion: 2,
+    kind: "player-private-worker-stopped",
+    ...identity,
+  } satisfies PlayerPrivateWorkerStopped);
+  port.postMessage(response);
+  port.close();
 }
 
 async function runPersistentTask(
   task: PlayerPrivateWorkerTask,
   initialization: PlayerPrivateWorkerInitialization,
-  agent: ReturnType<typeof createAgent>,
+  agent: PlayerPrivateSimulationAgent,
 ): Promise<PlayerPrivateWorkerTaskResult> {
   const games = await runAssignedGames(
     task.assignedGames,
@@ -235,11 +338,83 @@ function sanitizeFailureMessage(error: unknown): string {
     : singleLine.slice(0, 1_000);
 }
 
-function createAgent(policy: PlayerPrivateSearchPolicy) {
+interface WorkerRuntime {
+  readonly evaluator: DrawbackLeafEvaluator;
+  readonly agent: PlayerPrivateSimulationAgent;
+  beginTask(task: PlayerPrivateWorkerTask): void;
+  endTask(task: PlayerPrivateWorkerTask): void;
+  handleParentMessage(value: unknown): boolean;
+  abort(): void;
+  close(): Promise<void>;
+}
+
+function createWorkerRuntime(
+  policy: PlayerPrivateWorkerSearchPolicy,
+  port?: NonNullable<typeof parentPort>,
+  identity?: {
+    readonly poolId: string;
+    readonly workerId: number;
+    readonly generation: number;
+    readonly authenticationToken: string;
+  },
+): WorkerRuntime {
+  const controller = new AbortController();
+  if (policy.evaluator.kind === "material") {
+    return Object.freeze({
+      evaluator: drawbackMaterialEvaluator,
+      agent: createAgent(
+        policy,
+        drawbackMaterialEvaluator,
+        controller.signal,
+      ),
+      beginTask: () => undefined,
+      endTask: () => undefined,
+      handleParentMessage: () => false,
+      abort: () => {
+        controller.abort();
+      },
+      close: () => Promise.resolve(),
+    });
+  }
+  if (port === undefined || identity === undefined) {
+    throw new Error(
+      "Node UCI evaluation requires a persistent parent-owned evaluator.",
+    );
+  }
+  const evaluator = new PlayerPrivateRemoteLeafEvaluator(
+    policy.evaluator.evaluatorId,
+    identity,
+    port,
+  );
+  return Object.freeze({
+    evaluator,
+    agent: createAgent(policy, evaluator, controller.signal),
+    beginTask: (task: PlayerPrivateWorkerTask) => {
+      evaluator.beginTask(task);
+    },
+    endTask: (task: PlayerPrivateWorkerTask) => {
+      evaluator.endTask(task);
+    },
+    handleParentMessage: (value: unknown) => evaluator.handleParentMessage(value),
+    abort: () => {
+      controller.abort();
+    },
+    close: () => {
+      evaluator.close();
+      return Promise.resolve();
+    },
+  });
+}
+
+function createAgent(
+  policy: PlayerPrivateWorkerSearchPolicy,
+  evaluator: DrawbackLeafEvaluator,
+  signal: AbortSignal,
+): PlayerPrivateSimulationAgent {
   return createPlayerPrivateSearchAgent({
     id: policy.policyId,
     policyId: policy.policyId,
-    evaluator: drawbackMaterialEvaluator,
+    evaluator,
     opponentAggregation:
       policy.opponentAggregation ?? "worst-case",
     limits: {
@@ -251,12 +426,49 @@ function createAgent(policy: PlayerPrivateSearchPolicy) {
       ...(policy.leafCacheHistoryMode === undefined
         ? {}
         : { leafCacheHistoryMode: policy.leafCacheHistoryMode }),
+      signal,
     },
     temperature: {
       temperatureCp: policy.temperatureCp,
       ...(policy.topK === undefined ? {} : { topK: policy.topK }),
     },
   });
+}
+
+function findRetryableEvaluatorFailure(
+  value: unknown,
+): TransientParallelWorkerError | undefined {
+  const existing = findTransientParallelWorkerError(value);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const seen = new Set<unknown>();
+  let current = value;
+  while (current instanceof Error && !seen.has(current)) {
+    if (
+      current instanceof UciTimeoutError
+      || current instanceof UciTransportError
+    ) {
+      return new TransientParallelWorkerError(
+        "worker-reported-transient",
+        "The authenticated UCI evaluator became unavailable.",
+        { cause: value },
+      );
+    }
+    seen.add(current);
+    current = current.cause;
+  }
+  return undefined;
+}
+
+function initializationFailureMessage(
+  error: unknown,
+  transient: boolean,
+): string {
+  if (transient) {
+    return "The authenticated UCI evaluator process was unavailable.";
+  }
+  return "Player-private evaluator initialization failed.";
 }
 
 function failWorker(error: Error): void {
