@@ -68,6 +68,8 @@ const expectedArenaFiles = new Set([
   "prepared-parallel.test.ts",
   "property.test.ts",
   "random-streams.ts",
+  "schema9-schedule.test.ts",
+  "schema9-schedule.ts",
   "simulation.test.ts",
   "simulation.ts",
   "stockfish-agent.test.ts",
