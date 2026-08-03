@@ -254,15 +254,16 @@ async function searchNode(
 }
 
 /**
- * Extends the horizon by one exact drawback-legal capture ply. This catches
- * immediate recaptures without turning quiet positions into an extra full
- * search depth, and forced-capture positions cannot use the static baseline.
+ * Extends the horizon by one optional exact drawback-legal capture ply, then
+ * follows mandatory capture-only continuations until a quiet choice or the
+ * hard node cap. Forced-capture positions never use a static stand-pat.
  */
 async function evaluateLeaf(
   session: OmniscientSession,
   ply: number,
   state: SearchState,
   suppliedLegalMoves?: readonly ChessMove[],
+  extendOptionalCaptures = true,
 ): Promise<NodeResult> {
   const legalMoves = suppliedLegalMoves ?? orderedMoves(session.legalMoves());
   const baseline = await evaluateLeafBaseline(
@@ -280,24 +281,37 @@ async function evaluateLeaf(
   if (captures.length === 0) {
     return baseline;
   }
-  if (state.nodes + captures.length > state.limits.maxNodes) {
-    state.truncated = true;
-    return baseline;
-  }
-
-  const maximizing = session.turn === state.rootColor;
   const quietMoveAvailable = legalMoves.some(
     (move) => move.captured === undefined,
   );
+  if (!extendOptionalCaptures && quietMoveAvailable) {
+    return baseline;
+  }
+  if (state.nodes + captures.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return quietMoveAvailable
+      ? baseline
+      : conservativeForcedCaptureResult(captures, ply);
+  }
+
+  const maximizing = session.turn === state.rootColor;
   let selected: NodeResult | null = quietMoveAvailable ? baseline : null;
   for (const move of captures) {
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return quietMoveAvailable
+        ? baseline
+        : conservativeForcedCaptureResult(captures, ply);
+    }
     const child = session.fork();
     applySearchMove(child, move);
     state.nodes += 1;
-    const childResult = await evaluateLeafBaseline(
+    const childResult = await evaluateLeaf(
       child,
       ply + 1,
       state,
+      undefined,
+      false,
     );
     const candidate: NodeResult = {
       score: childResult.score,
@@ -315,6 +329,26 @@ async function evaluateLeaf(
     throw new Error("Capture extension produced no selectable continuation.");
   }
   return selected;
+}
+
+/**
+ * A truncated forced-capture leaf cannot use its static position as though a
+ * quiet move existed. This root-loss bound keeps the score conservative while
+ * returning a deterministic legal continuation without evaluating an
+ * uncharged node. `truncated` tells callers that the bound is not exact.
+ */
+function conservativeForcedCaptureResult(
+  captures: readonly ChessMove[],
+  ply: number,
+): NodeResult {
+  const forcedMove = captures[0];
+  if (forcedMove === undefined) {
+    throw new Error("Forced-capture fallback requires a legal capture.");
+  }
+  return {
+    score: -TERMINAL_SCORE + ply + 1,
+    principalVariation: [forcedMove],
+  };
 }
 
 /** Evaluates a terminal/static leaf without another ordinary capture ply. */

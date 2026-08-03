@@ -12,6 +12,7 @@ import type {
   PositionView,
 } from "@drawbackengine/drawback-engine";
 import {
+  checkersRule,
   lameDuckRule,
   unrestrictedRule,
 } from "@drawbackengine/drawback-engine";
@@ -25,6 +26,7 @@ import {
 import {
   searchPlayerPrivateDrawbackMove,
   searchPlayerPrivateDrawbackRootMove,
+  type PlayerPrivateSearchInput,
 } from "./player-private-search.js";
 
 const noKingCaptureRule: DrawbackRule<
@@ -229,6 +231,128 @@ describe("searchPlayerPrivateDrawbackMove", () => {
       captured: "rook",
     });
     expect(result.score).toBeGreaterThan(900_000);
+  });
+
+  it("never stands pat when every live world forces a capture", async () => {
+    const searchRoot = async (
+      aggregation: PlayerPrivateSearchInput["aggregation"],
+      maxNodes: number,
+    ) => {
+      const position = CapturableKingPosition.fromFen(POISONED_ROOK_FEN);
+      const root = position.legalMoves().find(
+        (move) => move.from === "d1" && move.to === "d7",
+      );
+      if (root === undefined) {
+        throw new Error("Expected Qxd7 to be authority-legal.");
+      }
+      const result = await searchPlayerPrivateDrawbackRootMove(
+        {
+          trace: createPublicGameTrace(position.snapshot()),
+          own: ownCapability("white", unrestrictedRule, position),
+          opponent: [
+            publicHypothesis(
+              "checkers-black",
+              1,
+              "black",
+              checkersRule,
+              position,
+            ),
+          ],
+          aggregation,
+          evaluator: drawbackMaterialEvaluator,
+          limits: { depth: 1, maxNodes },
+        },
+        root,
+      );
+      return { result, root };
+    };
+
+    for (
+      const aggregation of [
+        "worst-case",
+        "posterior-expected",
+        "posterior-cvar-25",
+      ] as const
+    ) {
+      const bounded = await searchRoot(aggregation, 2);
+      expect(bounded.result).toMatchObject({
+        score: -999_998,
+        nodes: 2,
+        truncated: true,
+      });
+      expect(bounded.result.principalVariation).toEqual([
+        bounded.root,
+        expect.objectContaining({
+          from: "e8",
+          to: "d7",
+          captured: "queen",
+        }),
+      ]);
+
+      const exact = await searchRoot(aggregation, 3);
+      expect(exact.result).toMatchObject({
+        score: 0,
+        nodes: 3,
+        truncated: false,
+      });
+    }
+  });
+
+  it("bounds only the forced worlds in a mixed posterior", async () => {
+    const searchRoot = async (maxNodes: number) => {
+      const position = CapturableKingPosition.fromFen(POISONED_ROOK_FEN);
+      const root = position.legalMoves().find(
+        (move) => move.from === "d1" && move.to === "d7",
+      );
+      if (root === undefined) {
+        throw new Error("Expected Qxd7 to be authority-legal.");
+      }
+      const result = await searchPlayerPrivateDrawbackRootMove(
+        {
+          trace: createPublicGameTrace(position.snapshot()),
+          own: ownCapability("white", unrestrictedRule, position),
+          opponent: [
+            publicHypothesis(
+              "checkers-black",
+              0.5,
+              "black",
+              checkersRule,
+              position,
+            ),
+            publicHypothesis(
+              "unrestricted-black",
+              0.5,
+              "black",
+              unrestrictedRule,
+              position,
+            ),
+          ],
+          aggregation: "posterior-expected",
+          evaluator: drawbackMaterialEvaluator,
+          limits: { depth: 1, maxNodes },
+        },
+        root,
+      );
+      return { result, root };
+    };
+
+    const bounded = await searchRoot(2);
+    expect(bounded.result).toMatchObject({
+      score: -499_549,
+      nodes: 2,
+      truncated: true,
+    });
+    expect(bounded.result.principalVariation).toEqual([
+      bounded.root,
+      expect.objectContaining({ from: "e8", to: "d7" }),
+    ]);
+
+    const exact = await searchRoot(3);
+    expect(exact.result).toMatchObject({
+      score: 0,
+      nodes: 3,
+      truncated: false,
+    });
   });
 
   it("preserves special castling king-passant in the public snapshot", async () => {

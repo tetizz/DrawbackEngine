@@ -761,15 +761,17 @@ function opponentBranches(
 }
 
 /**
- * Extends one horizon ply through exact captures. Opponent posterior modes
- * retain each world's legal mask, while a forced-capture world cannot use the
- * quiet static baseline available to a different hidden-rule world.
+ * Extends one optional horizon ply through exact captures, then follows
+ * mandatory capture-only continuations. Posterior modes retain each world's
+ * legal mask, so one world's quiet reply cannot stand in for another world's
+ * forced capture.
  */
 async function evaluateLeaf(
   node: PrivateNode,
   ply: number,
   state: SearchState,
   suppliedExpansion?: TurnExpansion,
+  extendOptionalCaptures = true,
 ): Promise<NodeResult> {
   const expansion =
     suppliedExpansion === undefined
@@ -793,9 +795,18 @@ async function evaluateLeaf(
         expansion,
       );
     }
+    const forcedCaptures = forcedOpponentCaptures(expansion);
+    if (!extendOptionalCaptures && forcedCaptures.length === 0) {
+      return evaluatePosteriorOpponentLeaf(
+        node,
+        ply,
+        state,
+        expansion,
+      );
+    }
     if (state.nodes + captures.length > state.limits.maxNodes) {
       state.truncated = true;
-      return evaluatePosteriorOpponentLeaf(
+      return evaluatePosteriorOpponentBudgetFallback(
         node,
         ply,
         state,
@@ -817,25 +828,47 @@ async function evaluateLeaf(
   ) {
     return baseline;
   }
-  if (state.nodes + captures.length > state.limits.maxNodes) {
-    state.truncated = true;
-    return baseline;
-  }
-
   const ownTurn = node.position.turn === state.rootColor;
-  const branches = ownTurn
-    ? captures.map((move) => ({ move, node: applyOwnMove(node, move) }))
-    : opponentBranches(node, captures);
+  const forcedCaptures = ownTurn ? [] : forcedOpponentCaptures(expansion);
   const quietMoveAvailable = expansion.moves.some(
     (move) => move.captured === undefined,
   );
+  if (
+    !extendOptionalCaptures
+    && quietMoveAvailable
+    && forcedCaptures.length === 0
+  ) {
+    return baseline;
+  }
+  if (state.nodes + captures.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return forcedCaptures.length > 0
+      ? conservativeForcedCaptureResult(forcedCaptures, ply)
+      : quietMoveAvailable
+        ? baseline
+        : conservativeForcedCaptureResult(captures, ply);
+  }
+
+  const branches = ownTurn
+    ? captures.map((move) => ({ move, node: applyOwnMove(node, move) }))
+    : opponentBranches(node, captures);
   let selected: NodeResult | null = quietMoveAvailable ? baseline : null;
   for (const branch of branches) {
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return forcedCaptures.length > 0
+        ? conservativeForcedCaptureResult(forcedCaptures, ply)
+        : quietMoveAvailable
+          ? baseline
+          : conservativeForcedCaptureResult(captures, ply);
+    }
     state.nodes += 1;
-    const child = await evaluateLeafBaseline(
+    const child = await evaluateLeaf(
       branch.node,
       ply + 1,
       state,
+      undefined,
+      false,
     );
     const candidate: NodeResult = {
       score: child.score,
@@ -910,12 +943,31 @@ async function evaluatePosteriorOpponentCaptureExtension(
 ): Promise<NodeResult> {
   const evaluated = new Map<string, EvaluatedMoveBranch>();
   for (const branch of opponentBranches(node, captures)) {
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return evaluatePosteriorOpponentBudgetFallback(
+        node,
+        ply,
+        state,
+        expansion,
+      );
+    }
     state.nodes += 1;
-    const result = await evaluateLeafBaseline(
+    const result = await evaluateLeaf(
       branch.node,
       ply + 1,
       state,
+      undefined,
+      false,
     );
+    if (state.truncated) {
+      return evaluatePosteriorOpponentBudgetFallback(
+        node,
+        ply,
+        state,
+        expansion,
+      );
+    }
     evaluated.set(moveId(branch.move), { branch, result });
   }
 
@@ -1001,6 +1053,145 @@ async function evaluatePosteriorOpponentCaptureExtension(
             representative.branch.move,
             ...representative.result.principalVariation,
           ],
+  };
+}
+
+/**
+ * Produces a fail-closed posterior score when the hard node cap prevents an
+ * exact capture child. Worlds with a quiet legal reply may retain their static
+ * leaf; forced-capture worlds receive a root-loss bound and a legal reply PV.
+ * No uncharged child position is evaluated.
+ */
+async function evaluatePosteriorOpponentBudgetFallback(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+): Promise<NodeResult> {
+  const movesById = new Map(
+    expansion.moves.map((move) => [moveId(move), move] as const),
+  );
+  const staticScores = new Map<string, number>();
+  const outcomes: WorldScoreOutcome[] = [];
+  for (const world of requiredOpponentWorlds(expansion)) {
+    if (world.terminalScore !== null) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
+      continue;
+    }
+    const moves = movesForWorld(world, movesById);
+    const captures = orderedMoves(
+      moves.filter((move) => move.captured !== undefined),
+    );
+    const kingCapture = captures.find((move) => move.captured === "king");
+    if (kingCapture !== undefined) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: -TERMINAL_SCORE + ply + 1,
+        replyId: moveId(kingCapture),
+      });
+      continue;
+    }
+    const quietMoveAvailable = moves.some(
+      (move) => move.captured === undefined,
+    );
+    if (!quietMoveAvailable && captures.length > 0) {
+      const forced = conservativeForcedCaptureResult(captures, ply);
+      const forcedMove = forced.principalVariation[0];
+      if (forcedMove === undefined) {
+        throw new Error("Forced posterior fallback has no legal reply.");
+      }
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: forced.score,
+        replyId: moveId(forcedMove),
+      });
+      continue;
+    }
+    const maskId = [...world.legalMoveIds].sort().join(",");
+    let staticScore = staticScores.get(maskId);
+    if (staticScore === undefined) {
+      staticScore = await evaluateStaticLeaf(node, state, moves);
+      staticScores.set(maskId, staticScore);
+    }
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: staticScore,
+      replyId: null,
+    });
+  }
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const selectedId = [...aggregation.representativeMass.entries()].sort(
+    ([leftId, leftMass], [rightId, rightMass]) =>
+      rightMass - leftMass || leftId.localeCompare(rightId),
+  )[0]?.[0];
+  const selectedMove =
+    selectedId === undefined ? undefined : movesById.get(selectedId);
+  if (selectedId !== undefined && selectedMove === undefined) {
+    throw new Error(
+      `Conservative posterior reply ${selectedId} is missing.`,
+    );
+  }
+  return {
+    score: aggregation.score,
+    principalVariation: selectedMove === undefined ? [] : [selectedMove],
+  };
+}
+
+/**
+ * Returns captures that are mandatory in at least one live opponent world.
+ * The result is ordered and de-duplicated so it can also seed a deterministic
+ * conservative PV when the node budget cannot visit those children.
+ */
+function forcedOpponentCaptures(
+  expansion: TurnExpansion,
+): readonly ChessMove[] {
+  const worlds = requiredOpponentWorlds(expansion);
+  const movesById = new Map(
+    expansion.moves.map((move) => [moveId(move), move] as const),
+  );
+  const forced = new Map<string, ChessMove>();
+  for (const world of worlds) {
+    if (world.terminalScore !== null) {
+      continue;
+    }
+    const moves = movesForWorld(world, movesById);
+    const captures = moves.filter((move) => move.captured !== undefined);
+    if (
+      captures.length > 0
+      && captures.length === moves.length
+    ) {
+      for (const move of captures) {
+        forced.set(moveId(move), move);
+      }
+    }
+  }
+  return orderedMoves([...forced.values()]);
+}
+
+/**
+ * A truncated forced-capture leaf cannot use an illegal static stand-pat.
+ * This deterministic root-loss bound preserves a legal PV without evaluating
+ * an uncharged child; `truncated` records that the score is conservative.
+ */
+function conservativeForcedCaptureResult(
+  captures: readonly ChessMove[],
+  ply: number,
+): NodeResult {
+  const forcedMove = captures[0];
+  if (forcedMove === undefined) {
+    throw new Error("Forced-capture fallback requires a legal capture.");
+  }
+  return {
+    score: -TERMINAL_SCORE + ply + 1,
+    principalVariation: [forcedMove],
   };
 }
 

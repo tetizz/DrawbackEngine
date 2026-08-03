@@ -5,6 +5,7 @@ import type {
   DrawbackRule,
 } from "@drawbackengine/drawback-engine";
 import {
+  checkersRule,
   lameDuckRule,
   unrestrictedRule,
 } from "@drawbackengine/drawback-engine";
@@ -150,6 +151,61 @@ describe("searchOmniscientDrawbackMove", () => {
       captured: "rook",
     });
     expect(selected.score).toBeGreaterThan(900_000);
+  });
+
+  it("uses a conservative forced-capture bound at the hard node cap", async () => {
+    const searchRoot = async (maxNodes: number) => {
+      const session = DrawbackGameSession.create(
+        { white: unrestrictedRule, black: checkersRule },
+        new Mulberry32(91),
+        POISONED_ROOK_FEN,
+      );
+      const root = session.legalMoves().find(
+        (move) => move.from === "d1" && move.to === "d7",
+      );
+      if (root === undefined) {
+        throw new Error("Expected Qxd7 to be authority-legal.");
+      }
+      return {
+        root,
+        result: await searchOmniscientDrawbackRootMove(
+          session,
+          root,
+          drawbackMaterialEvaluator,
+          { depth: 1, maxNodes },
+        ),
+      };
+    };
+
+    const bounded = await searchRoot(2);
+    expect(bounded.result).toMatchObject({
+      score: -999_998,
+      nodes: 2,
+      truncated: true,
+    });
+    expect(bounded.result.principalVariation).toEqual([
+      bounded.root,
+      expect.objectContaining({
+        from: "e8",
+        to: "d7",
+        captured: "queen",
+      }),
+    ]);
+
+    const exact = await searchRoot(3);
+    expect(exact.result).toMatchObject({
+      score: 0,
+      nodes: 3,
+      truncated: false,
+    });
+    expect(exact.result.principalVariation).toEqual([
+      exact.root,
+      expect.objectContaining({
+        from: "e8",
+        to: "d7",
+        captured: "queen",
+      }),
+    ]);
   });
 
   it("is deterministic and leaves the searched session untouched", async () => {
