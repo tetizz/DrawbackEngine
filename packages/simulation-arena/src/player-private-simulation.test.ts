@@ -432,20 +432,57 @@ describe("player-private capturable-king simulation", () => {
   });
 
   it("replays a non-orthodox en-passant corpus regression", async () => {
-    const corpusAgent = createPlayerPrivateSearchAgent({
-      id: "corpus-en-passant-regression",
-      evaluator: drawbackMaterialEvaluator,
-      limits: {
-        maxDepth: 1,
-        maxNodes: 5_000,
-        leafCacheEntries: 16_384,
-        leafCacheHistoryMode: "full",
+    const canonicalMoves = [
+      ["a2", "a3"],
+      ["a7", "a6"],
+      ["b1", "c3"],
+      ["b7", "b6"],
+      ["b2", "b3"],
+      ["a8", "a7"],
+      ["a1", "a2"],
+      ["c7", "c6"],
+      ["a3", "a4"],
+      ["a7", "a8"],
+      ["c3", "b5"],
+      ["a6", "b5"],
+      ["c1", "a3"],
+      ["b5", "a4"],
+      ["d1", "b1"],
+      ["a4", "b3"],
+      ["a3", "b4"],
+      ["b3", "a2"],
+      ["b1", "a1"],
+      ["a8", "a7"],
+      ["b4", "a3"],
+      ["a7", "a3"],
+      ["a1", "a2"],
+      ["a3", "a8"],
+      ["e2", "e4"],
+      ["b8", "a6"],
+      ["a2", "a6"],
+      ["c8", "b7"],
+      ["e1", "d1"],
+      ["d7", "d5"],
+      ["a6", "a8"],
+      ["d5", "e4"],
+      ["c2", "c3"],
+      ["e7", "e5"],
+      ["a8", "d8"],
+      ["b6", "b5"],
+      ["d2", "d4"],
+      ["b7", "a8"],
+      ["d8", "e8"],
+    ] as const;
+    const replayAgent: PlayerPrivateSimulationAgent = {
+      id: "corpus-en-passant-replay",
+      chooseMove(view) {
+        const expected = canonicalMoves[view.ply];
+        if (expected === undefined) {
+          throw new Error(`Unexpected replay ply ${String(view.ply)}.`);
+        }
+        return Promise.resolve(requiredMove(view, expected[0], expected[1]));
       },
-      temperature: {
-        temperatureCp: 35,
-        topK: 8,
-      },
-    });
+    };
     const game = await simulatePlayerPrivateGame({
       seed: 1_504_459_138,
       parameterSeeds: {
@@ -457,11 +494,11 @@ describe("player-private capturable-king simulation", () => {
         white: resolvePlayerPrivateRule("spice-of-life"),
         black: resolvePlayerPrivateRule("true-gentleman"),
       },
-      whiteAgent: corpusAgent,
-      blackAgent: corpusAgent,
+      whiteAgent: replayAgent,
+      blackAgent: replayAgent,
     });
 
-    expect(game.plies).toHaveLength(39);
+    expect(game.plies).toHaveLength(canonicalMoves.length);
     expect(game.plies[37]?.observation.fenBefore).toBe(
       "3Qkbnr/1b3ppp/2p5/1p2p3/3Pp3/2P5/5PPP/3K1BNR b k d3 0 19",
     );
