@@ -253,12 +253,81 @@ async function searchNode(
   return { score: bestScore, principalVariation: bestLine };
 }
 
+/**
+ * Extends the horizon by one exact drawback-legal capture ply. This catches
+ * immediate recaptures without turning quiet positions into an extra full
+ * search depth, and forced-capture positions cannot use the static baseline.
+ */
 async function evaluateLeaf(
   session: OmniscientSession,
   ply: number,
   state: SearchState,
   suppliedLegalMoves?: readonly ChessMove[],
 ): Promise<NodeResult> {
+  const legalMoves = suppliedLegalMoves ?? orderedMoves(session.legalMoves());
+  const baseline = await evaluateLeafBaseline(
+    session,
+    ply,
+    state,
+    legalMoves,
+  );
+  if (legalMoves.some((move) => move.captured === "king")) {
+    return baseline;
+  }
+  const captures = orderedMoves(
+    legalMoves.filter((move) => move.captured !== undefined),
+  );
+  if (captures.length === 0) {
+    return baseline;
+  }
+  if (state.nodes + captures.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return baseline;
+  }
+
+  const maximizing = session.turn === state.rootColor;
+  const quietMoveAvailable = legalMoves.some(
+    (move) => move.captured === undefined,
+  );
+  let selected: NodeResult | null = quietMoveAvailable ? baseline : null;
+  for (const move of captures) {
+    const child = session.fork();
+    applySearchMove(child, move);
+    state.nodes += 1;
+    const childResult = await evaluateLeafBaseline(
+      child,
+      ply + 1,
+      state,
+    );
+    const candidate: NodeResult = {
+      score: childResult.score,
+      principalVariation: [move, ...childResult.principalVariation],
+    };
+    if (selected === null || improvesTacticalResult(
+      candidate,
+      selected,
+      maximizing,
+    )) {
+      selected = candidate;
+    }
+  }
+  if (selected === null) {
+    throw new Error("Capture extension produced no selectable continuation.");
+  }
+  return selected;
+}
+
+/** Evaluates a terminal/static leaf without another ordinary capture ply. */
+async function evaluateLeafBaseline(
+  session: OmniscientSession,
+  ply: number,
+  state: SearchState,
+  suppliedLegalMoves?: readonly ChessMove[],
+): Promise<NodeResult> {
+  const terminal = terminalScore(session.result, state.rootColor, ply);
+  if (terminal !== null) {
+    return { score: terminal, principalVariation: [] };
+  }
   const legalMoves = suppliedLegalMoves ?? orderedMoves(session.legalMoves());
   const immediateKingCapture = legalMoves.find(
     (move) => move.captured === "king",
@@ -299,6 +368,23 @@ async function evaluateLeaf(
         : -sideToMoveScore,
     principalVariation: [],
   };
+}
+
+function improvesTacticalResult(
+  candidate: NodeResult,
+  selected: NodeResult,
+  maximizing: boolean,
+): boolean {
+  if (candidate.score !== selected.score) {
+    return maximizing
+      ? candidate.score > selected.score
+      : candidate.score < selected.score;
+  }
+  const candidateMove = candidate.principalVariation[0];
+  const selectedMove = selected.principalVariation[0];
+  return candidateMove !== undefined
+    && selectedMove !== undefined
+    && moveId(candidateMove).localeCompare(moveId(selectedMove)) < 0;
 }
 
 function applySearchMove(

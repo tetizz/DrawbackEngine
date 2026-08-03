@@ -4,7 +4,10 @@ import type {
   DrawbackLoss,
   DrawbackRule,
 } from "@drawbackengine/drawback-engine";
-import { unrestrictedRule } from "@drawbackengine/drawback-engine";
+import {
+  lameDuckRule,
+  unrestrictedRule,
+} from "@drawbackengine/drawback-engine";
 import { Mulberry32 } from "@drawbackengine/shared";
 import { drawbackMaterialEvaluator } from "./material-evaluator.js";
 import {
@@ -40,6 +43,10 @@ const delayedLossRule: DrawbackRule<
         }
       : null,
 };
+
+const POISONED_ROOK_FEN =
+  "4k3/3r4/8/8/8/8/8/3QK3 w - - 0 1";
+const HORIZON_REGRESSION_LIMITS = { depth: 1, maxNodes: 20_000 } as const;
 
 describe("searchOmniscientDrawbackMove", () => {
   it("treats literal king capture as the decisive terminal move", async () => {
@@ -81,6 +88,68 @@ describe("searchOmniscientDrawbackMove", () => {
     expect(result.move).not.toMatchObject({ from: "h1", to: "h3" });
     expect(session.history()).toHaveLength(0);
     expect(session.result).toEqual({ kind: "active" });
+  });
+
+  it("extends a depth-one horizon through an immediate legal recapture", async () => {
+    const session = DrawbackGameSession.create(
+      { white: unrestrictedRule, black: unrestrictedRule },
+      new Mulberry32(91),
+      POISONED_ROOK_FEN,
+    );
+    const poisonedCapture = session.legalMoves().find(
+      (move) => move.from === "d1" && move.to === "d7",
+    );
+    if (poisonedCapture === undefined) {
+      throw new Error("Expected Qxd7 to be authority-legal.");
+    }
+
+    const poisoned = await searchOmniscientDrawbackRootMove(
+      session,
+      poisonedCapture,
+      drawbackMaterialEvaluator,
+      HORIZON_REGRESSION_LIMITS,
+    );
+    expect(poisoned).toMatchObject({
+      score: 0,
+      truncated: false,
+    });
+    expect(poisoned.principalVariation).toEqual([
+      poisonedCapture,
+      expect.objectContaining({
+        from: "e8",
+        to: "d7",
+        captured: "queen",
+      }),
+    ]);
+
+    const selected = await searchOmniscientDrawbackMove(
+      session,
+      drawbackMaterialEvaluator,
+      HORIZON_REGRESSION_LIMITS,
+    );
+    expect(selected.move).toMatchObject({ from: "d1", to: "a1" });
+    expect(selected.score).toBe(400);
+  });
+
+  it("keeps the capture when the opponent drawback forbids its recapture", async () => {
+    const session = DrawbackGameSession.create(
+      { white: unrestrictedRule, black: lameDuckRule },
+      new Mulberry32(91),
+      POISONED_ROOK_FEN,
+    );
+
+    const selected = await searchOmniscientDrawbackMove(
+      session,
+      drawbackMaterialEvaluator,
+      HORIZON_REGRESSION_LIMITS,
+    );
+
+    expect(selected.move).toMatchObject({
+      from: "d1",
+      to: "d7",
+      captured: "rook",
+    });
+    expect(selected.score).toBeGreaterThan(900_000);
   });
 
   it("is deterministic and leaves the searched session untouched", async () => {

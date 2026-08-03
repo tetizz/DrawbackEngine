@@ -11,7 +11,10 @@ import type {
   DrawbackRule,
   PositionView,
 } from "@drawbackengine/drawback-engine";
-import { unrestrictedRule } from "@drawbackengine/drawback-engine";
+import {
+  lameDuckRule,
+  unrestrictedRule,
+} from "@drawbackengine/drawback-engine";
 import { Mulberry32, type PlayerColor } from "@drawbackengine/shared";
 import { drawbackMaterialEvaluator } from "./material-evaluator.js";
 import type { DrawbackLeafEvaluator } from "./types.js";
@@ -72,6 +75,10 @@ const rewardedRookMoveEvaluator: DrawbackLeafEvaluator = {
     );
   },
 };
+
+const POISONED_ROOK_FEN =
+  "4k3/3r4/8/8/8/8/8/3QK3 w - - 0 1";
+const HORIZON_REGRESSION_LIMITS = { depth: 1, maxNodes: 20_000 } as const;
 
 describe("searchPlayerPrivateDrawbackMove", () => {
   it("recognizes literal king capture as an immediate win", async () => {
@@ -163,6 +170,65 @@ describe("searchPlayerPrivateDrawbackMove", () => {
       captured: "queen",
     });
     expect(result.opponentHypothesisCount).toBe(2);
+  });
+
+  it("avoids a one-ply poisoned capture under every posterior aggregation", async () => {
+    for (
+      const aggregation of [
+        "worst-case",
+        "posterior-expected",
+        "posterior-cvar-25",
+      ] as const
+    ) {
+      const position = CapturableKingPosition.fromFen(POISONED_ROOK_FEN);
+      const result = await searchPlayerPrivateDrawbackMove({
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "unrestricted-black",
+            1,
+            "black",
+            unrestrictedRule,
+            position,
+          ),
+        ],
+        aggregation,
+        evaluator: drawbackMaterialEvaluator,
+        limits: HORIZON_REGRESSION_LIMITS,
+      });
+
+      expect(result.move).toMatchObject({ from: "d1", to: "a1" });
+      expect(result.score).toBe(400);
+      expect(result.truncated).toBe(false);
+    }
+  });
+
+  it("keeps the capture when the reconstructed drawback forbids recapture", async () => {
+    const position = CapturableKingPosition.fromFen(POISONED_ROOK_FEN);
+    const result = await searchPlayerPrivateDrawbackMove({
+      trace: createPublicGameTrace(position.snapshot()),
+      own: ownCapability("white", unrestrictedRule, position),
+      opponent: [
+        publicHypothesis(
+          "lame-duck-black",
+          1,
+          "black",
+          lameDuckRule,
+          position,
+        ),
+      ],
+      aggregation: "posterior-expected",
+      evaluator: drawbackMaterialEvaluator,
+      limits: HORIZON_REGRESSION_LIMITS,
+    });
+
+    expect(result.move).toMatchObject({
+      from: "d1",
+      to: "d7",
+      captured: "rook",
+    });
+    expect(result.score).toBeGreaterThan(900_000);
   });
 
   it("preserves special castling king-passant in the public snapshot", async () => {
