@@ -233,9 +233,11 @@ copy or pin the engine's advertised UCI option surface. Run it only from a
 trusted path that cannot change after verification. Use `player-private:batch`
 with `node-uci-leaf` for authenticated, long-running simulation work.
 
-Use `--engine-kind fairy-stockfish` together with
-`--variant-path data/catalog/drawbackchess-fairy-v1.ini` for the optional Fairy
-leaf evaluator. The adapter authenticates the exact variant bytes before use.
+Use `--engine-kind fairy-stockfish` together with an absolute path to the
+repository's `data/catalog/drawbackchess-fairy-v1.ini` file for the optional
+Fairy leaf evaluator. Filtered pnpm commands run from the CLI package directory,
+so a repository-root-relative `data/catalog/...` path will not resolve there.
+The adapter authenticates the exact variant bytes before use.
 
 ## Rule status
 
