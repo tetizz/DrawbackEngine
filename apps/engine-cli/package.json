@@ -11,7 +11,9 @@
     "node": ">=22"
   },
   "scripts": {
+    "prebuild": "node ../../scripts/clean-owned-build-output.mjs",
     "build": "tsc -p tsconfig.build.json",
+    "postbuild": "node ../../scripts/normalize-built-artifacts.mjs --package",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "batch": "tsx src/batch-cli.ts",
     "demo": "tsx src/cli.ts",

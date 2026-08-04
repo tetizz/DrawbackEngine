@@ -7,7 +7,9 @@
     "node": ">=22"
   },
   "scripts": {
+    "prebuild": "node ../../scripts/clean-owned-build-output.mjs",
     "build": "tsc -p tsconfig.server.json && vite build",
+    "postbuild": "node ../../scripts/normalize-built-artifacts.mjs --package",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "start": "node dist/server/server/entry.js"
   },

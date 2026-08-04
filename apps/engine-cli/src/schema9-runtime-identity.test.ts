@@ -1000,7 +1000,7 @@ async function compileRuntimeIdentityFixture(
   await new Promise<void>((resolvePromise, rejectPromise) => {
     execFile(
       process.execPath,
-      [BUILD_ARTIFACT_NORMALIZER, projectRoot],
+      [BUILD_ARTIFACT_NORMALIZER, "--repository", projectRoot],
       { windowsHide: true },
       (error, stdout, stderr) => {
         if (error === null) {
