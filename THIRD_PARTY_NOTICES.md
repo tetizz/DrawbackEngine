@@ -12,6 +12,12 @@ compatibility observations.
 - [chessops](https://github.com/niklasf/chessops), version 0.15.1, is used under
   the GNU General Public License, version 3 or later. Distributions that combine
   this project with chessops must comply with that license.
+- [React](https://github.com/facebook/react) and React DOM, version 19, are
+  used under the MIT License for the local play interface.
+- [react-chessboard](https://github.com/Clariity/react-chessboard), version
+  5.10.0, is used under the MIT License for board rendering and interaction.
+- [Vite](https://github.com/vitejs/vite), version 6, is used under the MIT
+  License to build the local play interface.
 
 Dependency source is installed by pnpm and is not copied into this repository.
 The lockfile records the exact dependency graph used by local builds and CI.

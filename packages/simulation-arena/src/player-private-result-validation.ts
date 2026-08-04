@@ -1,20 +1,35 @@
+import { isDeepStrictEqual } from "node:util";
 import {
   DEFAULT_PLAYER_PRIVATE_LEAF_CACHE_ENTRIES,
 } from "@drawbackengine/drawback-search";
 import {
   CapturableKingPosition,
+  DrawbackGameSession,
+  type MoveCommand,
 } from "@drawbackengine/chess-core";
 import {
   assertExactKeys,
   protocolRecord,
+  type IndexedPlayerPrivateAssignment,
   type PlayerPrivateGameAssignment,
   type PlayerPrivateSearchPolicy,
   type PlayerPrivateWorkerRequest,
   type PlayerPrivateWorkerResponse,
 } from "./player-private-parallel-protocol.js";
 import {
+  assertPlayerPrivateWorkerTaskResultEnvelope,
+  type PlayerPrivateWorkerIdentity,
+  type PlayerPrivateWorkerTaskResult,
+} from "./player-private-worker-protocol.js";
+import {
   validatePlayerPrivateTerminal,
 } from "./player-private-terminal-validation.js";
+import {
+  resolvePlayerPrivateRule,
+} from "./player-private-catalog.js";
+import {
+  createSimulationRandomStreams,
+} from "./random-streams.js";
 
 export function assertPlayerPrivateWorkerResponse(
   value: unknown,
@@ -31,8 +46,44 @@ export function assertPlayerPrivateWorkerResponse(
   if (
     response["schemaVersion"] !== 1
     || response["kind"] !== "player-private-results"
-    || !Array.isArray(response["games"])
-    || response["games"].length !== assignedGames.length
+  ) {
+    throw new TypeError("Player-private worker response is invalid.");
+  }
+  validateGames(
+    response["games"],
+    assignedGames,
+    policy,
+    maxPlies,
+  );
+}
+
+export function assertPlayerPrivateWorkerTaskResult(
+  value: unknown,
+  expectedIdentity: PlayerPrivateWorkerIdentity,
+  expectedTaskId: number,
+  expectedAttempt: number,
+  assignedGames: readonly IndexedPlayerPrivateAssignment[],
+  policy: PlayerPrivateSearchPolicy,
+  maxPlies?: number,
+): asserts value is PlayerPrivateWorkerTaskResult {
+  assertPlayerPrivateWorkerTaskResultEnvelope(
+    value,
+    expectedIdentity,
+    expectedTaskId,
+    expectedAttempt,
+  );
+  validateGames(value.games, assignedGames, policy, maxPlies);
+}
+
+function validateGames(
+  value: unknown,
+  assignedGames: readonly IndexedPlayerPrivateAssignment[],
+  policy: PlayerPrivateSearchPolicy,
+  maxPlies?: number,
+): void {
+  if (
+    !Array.isArray(value)
+    || value.length !== assignedGames.length
   ) {
     throw new TypeError("Player-private worker response is invalid.");
   }
@@ -40,7 +91,7 @@ export function assertPlayerPrivateWorkerResponse(
     assignedGames.map((game) => [game.gameIndex, game.assignment]),
   );
   const seen = new Set<number>();
-  for (const raw of response["games"]) {
+  for (const raw of value) {
     const game = protocolRecord(raw, "indexed player-private result");
     assertExactKeys(
       game,
@@ -124,6 +175,7 @@ function validatePlayerPrivateResult(
   validateAgents(result["agents"], policy);
   validateDrawbackLabels(result, assignment);
   validatePositionChain(result, assignment, expectedPlyLimit);
+  validateAuthoritativeReplay(result, assignment, expectedPlyLimit);
 }
 
 function validateParameterSeeds(
@@ -157,7 +209,10 @@ function validateAgents(
   assertExactKeys(agents, ["white", "black"], "player-private result agents");
   const expectedSearchPolicy = {
     policyId: policy.policyId,
-    evaluatorId: "drawback-material/v1",
+    evaluatorId:
+      policy.evaluator.kind === "material"
+        ? "drawback-material/v1"
+        : policy.evaluator.evaluatorId,
     maxDepth: policy.maxDepth,
     maxNodes: policy.maxNodes,
     leafCacheEntries:
@@ -410,5 +465,168 @@ function validateMoveAndDrawback(
     throw new TypeError(
       "Player-private active drawback label is invalid.",
     );
+  }
+}
+
+function validateAuthoritativeReplay(
+  result: Record<string, unknown>,
+  assignment: PlayerPrivateGameAssignment,
+  expectedPlyLimit: number,
+): void {
+  const initialFen =
+    assignment.initialFen ?? CapturableKingPosition.fromFen().fen;
+  const random = createSimulationRandomStreams(
+    assignment.seed,
+    assignment.parameterSeeds,
+  );
+  const session = DrawbackGameSession.create(
+    {
+      white: resolvePlayerPrivateRule(assignment.whiteRuleId),
+      black: resolvePlayerPrivateRule(assignment.blackRuleId),
+    },
+    random.parameters,
+    initialFen,
+  );
+  const secrets = protocolRecord(
+    result["drawbackSecrets"],
+    "player-private result drawback secrets",
+  );
+  assertReplayEqual(
+    session.fen,
+    result["initialFen"],
+    "Player-private initial FEN does not match authoritative replay.",
+  );
+  assertReplayEqual(
+    session.exportSecretSnapshot(),
+    secrets["initial"],
+    "Player-private initial secrets do not match authoritative replay.",
+  );
+
+  const plies = result["plies"];
+  if (!Array.isArray(plies)) {
+    throw new TypeError("Player-private result plies must be an array.");
+  }
+  for (const [plyIndex, rawPly] of plies.entries()) {
+    const path = `Player-private ply ${String(plyIndex)}`;
+    if (session.result.kind !== "active") {
+      throw new TypeError(
+        `${path} occurs after the authoritative game ended.`,
+      );
+    }
+    const ply = protocolRecord(rawPly, `${path} result`);
+    const observation = protocolRecord(
+      ply["observation"],
+      `${path} observation`,
+    );
+    assertReplayEqual(
+      session.turn,
+      ply["color"],
+      `${path} color does not match authoritative replay.`,
+    );
+    assertReplayEqual(
+      session.fen,
+      observation["fenBefore"],
+      `${path} starting FEN does not match authoritative replay.`,
+    );
+    const currentSecrets = session.exportSecretSnapshot();
+    assertReplayEqual(
+      session.turn === "white"
+        ? currentSecrets.white
+        : currentSecrets.black,
+      ply["drawback"],
+      `${path} active secret does not match authoritative replay.`,
+    );
+    assertReplayEqual(
+      session.authorityLegalMoves(),
+      observation["authorityLegalMoves"],
+      `${path} authority-legal mask does not match authoritative replay.`,
+    );
+    assertReplayEqual(
+      session.legalMoves(),
+      observation["drawbackLegalMoves"],
+      `${path} drawback-legal mask does not match authoritative replay.`,
+    );
+
+    const outcome = session.move(
+      replayMoveCommand(observation["move"], path),
+    );
+    if (!outcome.ok) {
+      throw new TypeError(
+        `${path} move is rejected by authoritative replay: ${outcome.reason}.`,
+      );
+    }
+    assertReplayEqual(
+      outcome.observation,
+      observation,
+      `${path} observation does not match authoritative replay.`,
+    );
+  }
+
+  assertReplayEqual(
+    session.history().length,
+    plies.length,
+    "Player-private ply state does not match authoritative replay.",
+  );
+  assertReplayEqual(
+    session.fen,
+    result["finalFen"],
+    "Player-private final FEN does not match authoritative replay.",
+  );
+  assertReplayEqual(
+    session.exportSecretSnapshot(),
+    secrets["final"],
+    "Player-private final secrets do not match authoritative replay.",
+  );
+  assertReplayEqual(
+    session.result,
+    result["result"],
+    "Player-private terminal result does not match authoritative replay.",
+  );
+  assertReplayEqual(
+    session.result.kind === "active"
+      && plies.length === expectedPlyLimit,
+    result["stoppedAtPlyLimit"],
+    "Player-private ply-limit state does not match authoritative replay.",
+  );
+}
+
+function replayMoveCommand(
+  value: unknown,
+  path: string,
+): MoveCommand {
+  const move = protocolRecord(value, `${path} move`);
+  const from = move["from"];
+  const to = move["to"];
+  if (typeof from !== "string" || typeof to !== "string") {
+    throw new TypeError(
+      `${path} move coordinates are invalid for authoritative replay.`,
+    );
+  }
+  const promotion = move["promotion"];
+  if (
+    promotion !== undefined
+    && promotion !== "knight"
+    && promotion !== "bishop"
+    && promotion !== "rook"
+    && promotion !== "queen"
+  ) {
+    throw new TypeError(
+      `${path} promotion is invalid for authoritative replay.`,
+    );
+  }
+  return {
+    from,
+    to,
+    ...(promotion === undefined ? {} : { promotion }),
+  };
+}
+
+function assertReplayEqual(
+  actual: unknown,
+  expected: unknown,
+  message: string,
+): void {
+  if (!isDeepStrictEqual(actual, expected)) {
+    throw new TypeError(message);
   }
 }

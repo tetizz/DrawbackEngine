@@ -253,12 +253,201 @@ async function searchNode(
   return { score: bestScore, principalVariation: bestLine };
 }
 
+/**
+ * Extends the horizon by one optional exact drawback-legal capture ply, then
+ * follows mandatory capture-only continuations until a quiet choice or the
+ * hard node cap. Forced-capture positions never use a static stand-pat.
+ */
 async function evaluateLeaf(
   session: OmniscientSession,
   ply: number,
   state: SearchState,
   suppliedLegalMoves?: readonly ChessMove[],
+  extendOptionalCaptures = true,
 ): Promise<NodeResult> {
+  const legalMoves = suppliedLegalMoves ?? orderedMoves(session.legalMoves());
+  const terminal = terminalScore(session.result, state.rootColor, ply);
+  if (terminal !== null) {
+    return { score: terminal, principalVariation: [] };
+  }
+  if (session.publicPositionSnapshot().kingPassant !== null) {
+    return evaluateKingPassantExtension(
+      session,
+      ply,
+      state,
+      legalMoves,
+    );
+  }
+  const baseline = await evaluateLeafBaseline(
+    session,
+    ply,
+    state,
+    legalMoves,
+  );
+  if (legalMoves.some((move) => move.captured === "king")) {
+    return baseline;
+  }
+  const captures = orderedMoves(
+    legalMoves.filter((move) => move.captured !== undefined),
+  );
+  if (captures.length === 0) {
+    return baseline;
+  }
+  const quietMoveAvailable = legalMoves.some(
+    (move) => move.captured === undefined,
+  );
+  if (!extendOptionalCaptures && quietMoveAvailable) {
+    return baseline;
+  }
+  if (state.nodes + captures.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return quietMoveAvailable
+      ? baseline
+      : conservativeForcedCaptureResult(captures, ply);
+  }
+
+  const maximizing = session.turn === state.rootColor;
+  let selected: NodeResult | null = quietMoveAvailable ? baseline : null;
+  for (const move of captures) {
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return quietMoveAvailable
+        ? baseline
+        : conservativeForcedCaptureResult(captures, ply);
+    }
+    const child = session.fork();
+    applySearchMove(child, move);
+    state.nodes += 1;
+    const childResult = await evaluateLeaf(
+      child,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    const candidate: NodeResult = {
+      score: childResult.score,
+      principalVariation: [move, ...childResult.principalVariation],
+    };
+    if (selected === null || improvesTacticalResult(
+      candidate,
+      selected,
+      maximizing,
+    )) {
+      selected = candidate;
+    }
+  }
+  if (selected === null) {
+    throw new Error("Capture extension produced no selectable continuation.");
+  }
+  return selected;
+}
+
+/**
+ * Consumes the authority's one-reply castling king-passant state before a
+ * static evaluator is called. FEN cannot encode this right, so an exact
+ * drawback-legal reply must advance the session first.
+ */
+async function evaluateKingPassantExtension(
+  session: OmniscientSession,
+  ply: number,
+  state: SearchState,
+  legalMoves: readonly ChessMove[],
+): Promise<NodeResult> {
+  throwIfAborted(state.limits.signal);
+  const moves = orderedMoves(legalMoves);
+  if (state.nodes + moves.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return kingPassantBudgetFallback(moves, ply);
+  }
+
+  const maximizing = session.turn === state.rootColor;
+  let selected: NodeResult | null = null;
+  for (const move of moves) {
+    throwIfAborted(state.limits.signal);
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return kingPassantBudgetFallback(moves, ply);
+    }
+    const child = session.fork();
+    applySearchMove(child, move);
+    state.nodes += 1;
+    const childResult = await evaluateLeaf(
+      child,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    if (state.truncated) {
+      return kingPassantBudgetFallback(moves, ply);
+    }
+    const candidate: NodeResult = {
+      score: childResult.score,
+      principalVariation: [move, ...childResult.principalVariation],
+    };
+    if (
+      selected === null
+      || improvesTacticalResult(candidate, selected, maximizing)
+    ) {
+      selected = candidate;
+    }
+  }
+  if (selected === null) {
+    throw new Error("King-passant extension produced no legal continuation.");
+  }
+  return selected;
+}
+
+/**
+ * An unvisited king-passant reply cannot be replaced by a static FEN score.
+ * Preserve a legal deterministic PV and a fail-closed root-loss bound.
+ */
+function kingPassantBudgetFallback(
+  legalMoves: readonly ChessMove[],
+  ply: number,
+): NodeResult {
+  const move = legalMoves[0];
+  if (move === undefined) {
+    throw new Error("King-passant fallback requires a legal reply.");
+  }
+  return {
+    score: -TERMINAL_SCORE + ply + 1,
+    principalVariation: [move],
+  };
+}
+
+/**
+ * A truncated forced-capture leaf cannot use its static position as though a
+ * quiet move existed. This root-loss bound keeps the score conservative while
+ * returning a deterministic legal continuation without evaluating an
+ * uncharged node. `truncated` tells callers that the bound is not exact.
+ */
+function conservativeForcedCaptureResult(
+  captures: readonly ChessMove[],
+  ply: number,
+): NodeResult {
+  const forcedMove = captures[0];
+  if (forcedMove === undefined) {
+    throw new Error("Forced-capture fallback requires a legal capture.");
+  }
+  return {
+    score: -TERMINAL_SCORE + ply + 1,
+    principalVariation: [forcedMove],
+  };
+}
+
+/** Evaluates a terminal/static leaf without another ordinary capture ply. */
+async function evaluateLeafBaseline(
+  session: OmniscientSession,
+  ply: number,
+  state: SearchState,
+  suppliedLegalMoves?: readonly ChessMove[],
+): Promise<NodeResult> {
+  const terminal = terminalScore(session.result, state.rootColor, ply);
+  if (terminal !== null) {
+    return { score: terminal, principalVariation: [] };
+  }
   const legalMoves = suppliedLegalMoves ?? orderedMoves(session.legalMoves());
   const immediateKingCapture = legalMoves.find(
     (move) => move.captured === "king",
@@ -299,6 +488,23 @@ async function evaluateLeaf(
         : -sideToMoveScore,
     principalVariation: [],
   };
+}
+
+function improvesTacticalResult(
+  candidate: NodeResult,
+  selected: NodeResult,
+  maximizing: boolean,
+): boolean {
+  if (candidate.score !== selected.score) {
+    return maximizing
+      ? candidate.score > selected.score
+      : candidate.score < selected.score;
+  }
+  const candidateMove = candidate.principalVariation[0];
+  const selectedMove = selected.principalVariation[0];
+  return candidateMove !== undefined
+    && selectedMove !== undefined
+    && moveId(candidateMove).localeCompare(moveId(selectedMove)) < 0;
 }
 
 function applySearchMove(

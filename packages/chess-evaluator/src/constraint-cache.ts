@@ -34,7 +34,7 @@ export interface ConstraintPolicyIdentity {
 export interface ConstraintEngineFingerprint {
   readonly engine: string;
   readonly version: string;
-  /** Canonical caller-owned digest of all evaluation-affecting options. */
+  /** Canonical digest binding UCI options and caller-pinned runtime context. */
   readonly optionsDigest: string;
 }
 

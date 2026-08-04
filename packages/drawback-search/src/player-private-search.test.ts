@@ -11,7 +11,11 @@ import type {
   DrawbackRule,
   PositionView,
 } from "@drawbackengine/drawback-engine";
-import { unrestrictedRule } from "@drawbackengine/drawback-engine";
+import {
+  checkersRule,
+  lameDuckRule,
+  unrestrictedRule,
+} from "@drawbackengine/drawback-engine";
 import { Mulberry32, type PlayerColor } from "@drawbackengine/shared";
 import { drawbackMaterialEvaluator } from "./material-evaluator.js";
 import type { DrawbackLeafEvaluator } from "./types.js";
@@ -22,6 +26,7 @@ import {
 import {
   searchPlayerPrivateDrawbackMove,
   searchPlayerPrivateDrawbackRootMove,
+  type PlayerPrivateSearchInput,
 } from "./player-private-search.js";
 
 const noKingCaptureRule: DrawbackRule<
@@ -72,6 +77,10 @@ const rewardedRookMoveEvaluator: DrawbackLeafEvaluator = {
     );
   },
 };
+
+const POISONED_ROOK_FEN =
+  "4k3/3r4/8/8/8/8/8/3QK3 w - - 0 1";
+const HORIZON_REGRESSION_LIMITS = { depth: 1, maxNodes: 20_000 } as const;
 
 describe("searchPlayerPrivateDrawbackMove", () => {
   it("recognizes literal king capture as an immediate win", async () => {
@@ -165,6 +174,187 @@ describe("searchPlayerPrivateDrawbackMove", () => {
     expect(result.opponentHypothesisCount).toBe(2);
   });
 
+  it("avoids a one-ply poisoned capture under every posterior aggregation", async () => {
+    for (
+      const aggregation of [
+        "worst-case",
+        "posterior-expected",
+        "posterior-cvar-25",
+      ] as const
+    ) {
+      const position = CapturableKingPosition.fromFen(POISONED_ROOK_FEN);
+      const result = await searchPlayerPrivateDrawbackMove({
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "unrestricted-black",
+            1,
+            "black",
+            unrestrictedRule,
+            position,
+          ),
+        ],
+        aggregation,
+        evaluator: drawbackMaterialEvaluator,
+        limits: HORIZON_REGRESSION_LIMITS,
+      });
+
+      expect(result.move).toMatchObject({ from: "d1", to: "a1" });
+      expect(result.score).toBe(400);
+      expect(result.truncated).toBe(false);
+    }
+  });
+
+  it("keeps the capture when the reconstructed drawback forbids recapture", async () => {
+    const position = CapturableKingPosition.fromFen(POISONED_ROOK_FEN);
+    const result = await searchPlayerPrivateDrawbackMove({
+      trace: createPublicGameTrace(position.snapshot()),
+      own: ownCapability("white", unrestrictedRule, position),
+      opponent: [
+        publicHypothesis(
+          "lame-duck-black",
+          1,
+          "black",
+          lameDuckRule,
+          position,
+        ),
+      ],
+      aggregation: "posterior-expected",
+      evaluator: drawbackMaterialEvaluator,
+      limits: HORIZON_REGRESSION_LIMITS,
+    });
+
+    expect(result.move).toMatchObject({
+      from: "d1",
+      to: "d7",
+      captured: "rook",
+    });
+    expect(result.score).toBeGreaterThan(900_000);
+  });
+
+  it("never stands pat when every live world forces a capture", async () => {
+    const searchRoot = async (
+      aggregation: PlayerPrivateSearchInput["aggregation"],
+      maxNodes: number,
+    ) => {
+      const position = CapturableKingPosition.fromFen(POISONED_ROOK_FEN);
+      const root = position.legalMoves().find(
+        (move) => move.from === "d1" && move.to === "d7",
+      );
+      if (root === undefined) {
+        throw new Error("Expected Qxd7 to be authority-legal.");
+      }
+      const result = await searchPlayerPrivateDrawbackRootMove(
+        {
+          trace: createPublicGameTrace(position.snapshot()),
+          own: ownCapability("white", unrestrictedRule, position),
+          opponent: [
+            publicHypothesis(
+              "checkers-black",
+              1,
+              "black",
+              checkersRule,
+              position,
+            ),
+          ],
+          aggregation,
+          evaluator: drawbackMaterialEvaluator,
+          limits: { depth: 1, maxNodes },
+        },
+        root,
+      );
+      return { result, root };
+    };
+
+    for (
+      const aggregation of [
+        "worst-case",
+        "posterior-expected",
+        "posterior-cvar-25",
+      ] as const
+    ) {
+      const bounded = await searchRoot(aggregation, 2);
+      expect(bounded.result).toMatchObject({
+        score: -999_998,
+        nodes: 2,
+        truncated: true,
+      });
+      expect(bounded.result.principalVariation).toEqual([
+        bounded.root,
+        expect.objectContaining({
+          from: "e8",
+          to: "d7",
+          captured: "queen",
+        }),
+      ]);
+
+      const exact = await searchRoot(aggregation, 3);
+      expect(exact.result).toMatchObject({
+        score: 0,
+        nodes: 3,
+        truncated: false,
+      });
+    }
+  });
+
+  it("bounds only the forced worlds in a mixed posterior", async () => {
+    const searchRoot = async (maxNodes: number) => {
+      const position = CapturableKingPosition.fromFen(POISONED_ROOK_FEN);
+      const root = position.legalMoves().find(
+        (move) => move.from === "d1" && move.to === "d7",
+      );
+      if (root === undefined) {
+        throw new Error("Expected Qxd7 to be authority-legal.");
+      }
+      const result = await searchPlayerPrivateDrawbackRootMove(
+        {
+          trace: createPublicGameTrace(position.snapshot()),
+          own: ownCapability("white", unrestrictedRule, position),
+          opponent: [
+            publicHypothesis(
+              "checkers-black",
+              0.5,
+              "black",
+              checkersRule,
+              position,
+            ),
+            publicHypothesis(
+              "unrestricted-black",
+              0.5,
+              "black",
+              unrestrictedRule,
+              position,
+            ),
+          ],
+          aggregation: "posterior-expected",
+          evaluator: drawbackMaterialEvaluator,
+          limits: { depth: 1, maxNodes },
+        },
+        root,
+      );
+      return { result, root };
+    };
+
+    const bounded = await searchRoot(2);
+    expect(bounded.result).toMatchObject({
+      score: -499_549,
+      nodes: 2,
+      truncated: true,
+    });
+    expect(bounded.result.principalVariation).toEqual([
+      bounded.root,
+      expect.objectContaining({ from: "e8", to: "d7" }),
+    ]);
+
+    const exact = await searchRoot(3);
+    expect(exact.result).toMatchObject({
+      score: 0,
+      nodes: 3,
+      truncated: false,
+    });
+  });
+
   it("preserves special castling king-passant in the public snapshot", async () => {
     const position = CapturableKingPosition.fromFen(
       "5r1k/8/8/8/8/8/8/4K2R w K - 0 1",
@@ -200,6 +390,170 @@ describe("searchPlayerPrivateDrawbackMove", () => {
     });
     expect(result.move.flags).toContain("king-en-passant");
     expect(result.score).toBeGreaterThan(900_000);
+  });
+
+  it("expires a declined king-passant right before static leaf evaluation", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "5r1k/8/8/8/8/8/8/4K2R w K - 0 1",
+    );
+    const evaluatedLeaves: Array<{
+      readonly kingPassantActive: boolean;
+      readonly history: readonly ChessMove[];
+    }> = [];
+    const result = await searchPlayerPrivateDrawbackRootMove(
+      {
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "decline-king-passant",
+            1,
+            "black",
+            onlyMoveRule("test-decline-king-passant", "f8", "f7"),
+            position,
+          ),
+        ],
+        aggregation: "worst-case",
+        evaluator: {
+          id: "test-reject-active-king-passant/v1",
+          evaluate(leaf) {
+            if (leaf.kingPassantActive) {
+              throw new Error(
+                "Static evaluator cannot represent active king-passant.",
+              );
+            }
+            evaluatedLeaves.push({
+              kingPassantActive: leaf.kingPassantActive,
+              history: structuredClone(leaf.history),
+            });
+            return Promise.resolve(37);
+          },
+        },
+        limits: { depth: 1, maxNodes: 100 },
+      },
+      { from: "e1", to: "g1" },
+    );
+
+    expect(result).toMatchObject({
+      score: 37,
+      nodes: 3,
+      leaves: 1,
+      truncated: false,
+    });
+    expect(result.principalVariation.slice(0, 2)).toMatchObject([
+      { from: "e1", to: "g1" },
+      { from: "f8", to: "f7" },
+    ]);
+    expect(result.principalVariation[0]?.flags).toContain("castle");
+    expect(evaluatedLeaves).toEqual([
+      {
+        kingPassantActive: false,
+        history: [
+          expect.objectContaining({ from: "e1", to: "g1" }),
+          expect.objectContaining({ from: "f8", to: "f7" }),
+        ],
+      },
+    ]);
+  });
+
+  it("keeps posterior king-passant replies isolated by hidden-rule world", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "5r1k/8/8/8/8/8/8/4K2R w K - 0 1",
+    );
+    const evaluatedReplies: string[] = [];
+    const result = await searchPlayerPrivateDrawbackRootMove(
+      {
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "rook-decline",
+            0.5,
+            "black",
+            onlyMoveRule("test-rook-decline", "f8", "f7"),
+            position,
+          ),
+          publicHypothesis(
+            "king-decline",
+            0.5,
+            "black",
+            onlyMoveRule("test-king-decline", "h8", "h7"),
+            position,
+          ),
+        ],
+        aggregation: "posterior-expected",
+        evaluator: {
+          id: "test-posterior-king-passant/v1",
+          evaluate(leaf) {
+            if (leaf.kingPassantActive) {
+              throw new Error("King-passant right reached static evaluator.");
+            }
+            const reply = leaf.history.at(-1);
+            const replyId = `${reply?.from ?? ""}${reply?.to ?? ""}`;
+            evaluatedReplies.push(replyId);
+            return Promise.resolve(replyId === "f8f7" ? 100 : -100);
+          },
+        },
+        limits: { depth: 1, maxNodes: 100 },
+      },
+      { from: "e1", to: "g1" },
+    );
+
+    expect(result).toMatchObject({
+      score: 0,
+      nodes: 4,
+      leaves: 2,
+      truncated: false,
+    });
+    expect(result.principalVariation.slice(0, 2)).toMatchObject([
+      { from: "e1", to: "g1" },
+      { from: "f8", to: "f7" },
+    ]);
+    expect(evaluatedReplies).toEqual(["f8f7", "h8h7"]);
+  });
+
+  it("fails closed without evaluating an uncharged king-passant reply", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "5r1k/8/8/8/8/8/8/4K2R w K - 0 1",
+    );
+    let evaluationCount = 0;
+    const result = await searchPlayerPrivateDrawbackRootMove(
+      {
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "decline-king-passant",
+            1,
+            "black",
+            onlyMoveRule("test-bounded-king-passant", "f8", "f7"),
+            position,
+          ),
+        ],
+        aggregation: "worst-case",
+        evaluator: {
+          id: "test-no-uncharged-king-passant/v1",
+          evaluate() {
+            evaluationCount += 1;
+            return Promise.resolve(0);
+          },
+        },
+        limits: { depth: 1, maxNodes: 2 },
+      },
+      { from: "e1", to: "g1" },
+    );
+
+    expect(result).toMatchObject({
+      score: -999_998,
+      nodes: 2,
+      leaves: 0,
+      truncated: true,
+    });
+    expect(result.principalVariation.slice(0, 2)).toMatchObject([
+      { from: "e1", to: "g1" },
+      { from: "f8", to: "f7" },
+    ]);
+    expect(evaluationCount).toBe(0);
   });
 
   it("is deterministic and does not expose rule parameters or state", async () => {

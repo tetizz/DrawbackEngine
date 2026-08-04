@@ -3,6 +3,9 @@ import type {
   ExternalTurnConstraintRequest,
 } from "@drawbackengine/drawback-engine";
 import { UciClient } from "./client.js";
+import { AuthenticatedNodeUciEngineCloseError } from "./authenticated-node-uci-engine.js";
+import type { UciTransport } from "./types.js";
+import { UciProcessTerminationError } from "./types.js";
 import { MockUciTransport } from "./mock-transport.js";
 import {
   UciTurnConstraintProvider,
@@ -129,4 +132,137 @@ describe("UciTurnConstraintProvider", () => {
     await provider.dispose();
     await expect(provider.resolve(request())).rejects.toThrow("disposed");
   });
+
+  it("shares one in-flight owned-runtime cleanup", async () => {
+    const client = await initializedClient();
+    let cleanupCalls = 0;
+    let release: (() => void) | undefined;
+    const provider = new UciTurnConstraintProvider({
+      client,
+      policy: POLICY,
+      dispose: () => {
+        cleanupCalls += 1;
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+    });
+
+    const first = provider.dispose();
+    const second = provider.dispose();
+    expect(second).toBe(first);
+    expect(cleanupCalls).toBe(0);
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(cleanupCalls).toBe(1);
+    release?.();
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("retries incomplete owned-runtime cleanup and stays logically disposed", async () => {
+    const client = await initializedClient();
+    let cleanupCalls = 0;
+    const incomplete = new AuthenticatedNodeUciEngineCloseError(
+      "Process termination is not yet proven.",
+      true,
+      false,
+    );
+    const provider = new UciTurnConstraintProvider({
+      client,
+      policy: POLICY,
+      dispose: () => {
+        cleanupCalls += 1;
+        return cleanupCalls === 1
+          ? Promise.reject(incomplete)
+          : Promise.resolve();
+      },
+    });
+
+    await expect(provider.dispose()).rejects.toBe(incomplete);
+    await expect(provider.resolve(request())).rejects.toThrow("disposed");
+    await expect(provider.dispose()).resolves.toBeUndefined();
+    await expect(provider.dispose()).resolves.toBeUndefined();
+    expect(cleanupCalls).toBe(2);
+  });
+
+  it("caches a terminal cleanup failure after every resource is gone", async () => {
+    const client = await initializedClient();
+    let cleanupCalls = 0;
+    const terminal = new AuthenticatedNodeUciEngineCloseError(
+      "Cleanup completed with an abnormal shutdown.",
+      true,
+      true,
+    );
+    const provider = new UciTurnConstraintProvider({
+      client,
+      policy: POLICY,
+      dispose: () => {
+        cleanupCalls += 1;
+        return Promise.reject(terminal);
+      },
+    });
+
+    const first = provider.dispose();
+    await expect(first).rejects.toBe(terminal);
+    const second = provider.dispose();
+    expect(second).toBe(first);
+    await expect(second).rejects.toBe(terminal);
+    expect(cleanupCalls).toBe(1);
+  });
+
+  it("caches a terminal default-client shutdown failure", async () => {
+    const lines = [
+      "id name Stockfish Test 17.1",
+      "uciok",
+      "readyok",
+    ];
+    let closeCalls = 0;
+    const terminal = new UciProcessTerminationError(
+      "The process required forced termination.",
+      true,
+    );
+    const transport: UciTransport = {
+      send: () => Promise.resolve(),
+      lines: () => ({
+        [Symbol.asyncIterator]: () => ({
+          next: () => Promise.resolve(
+            lines.length === 0
+              ? { done: true, value: undefined }
+              : { done: false, value: lines.shift() ?? "" },
+          ),
+        }),
+      }),
+      close: () => {
+        closeCalls += 1;
+        return Promise.reject(terminal);
+      },
+    };
+    const client = new UciClient(transport);
+    await client.initialize();
+    const provider = new UciTurnConstraintProvider({ client, policy: POLICY });
+
+    const first = provider.dispose();
+    await expect(first).rejects.toBe(terminal);
+    const second = provider.dispose();
+    expect(second).toBe(first);
+    await expect(second).rejects.toBe(terminal);
+    expect(closeCalls).toBe(1);
+  });
 });
+
+async function initializedClient(): Promise<UciClient> {
+  const transport = new MockUciTransport([
+    {
+      command: "uci",
+      responses: ["id name Stockfish Test 17.1", "uciok"],
+    },
+    { command: "isready", responses: ["readyok"] },
+  ]);
+  const client = new UciClient(transport);
+  await client.initialize();
+  return client;
+}

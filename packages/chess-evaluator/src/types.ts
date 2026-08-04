@@ -61,6 +61,10 @@ export interface UciEvaluationOptions {
   readonly signal?: AbortSignal;
 }
 
+export interface UciControlOptions {
+  readonly signal?: AbortSignal;
+}
+
 export interface UciClientOptions {
   readonly timeoutMs?: number;
   /**
@@ -78,9 +82,72 @@ export class UciProtocolError extends Error {
   }
 }
 
+/**
+ * A process or transport failure that can be retried with the exact same
+ * authenticated request in a fresh engine process. Malformed UCI output
+ * remains a plain UciProtocolError and is intentionally not retryable.
+ */
+export class UciTransportError extends UciProtocolError {
+  public constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "UciTransportError";
+  }
+}
+
 export class UciTimeoutError extends Error {
-  public constructor(message: string) {
-    super(message);
+  public constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "UciTimeoutError";
   }
+}
+
+export class UciProcessTerminationError extends UciTimeoutError {
+  public constructor(
+    message: string,
+    public readonly processTerminated: boolean,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "UciProcessTerminationError";
+  }
+}
+
+export class UciProcessExitError extends UciTransportError {
+  public readonly processTerminated = true;
+
+  public constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "UciProcessExitError";
+  }
+}
+
+/** Returns true only when typed error evidence proves the process exited. */
+export function errorProvesUciProcessTerminated(value: unknown): boolean {
+  const seen = new Set<unknown>();
+  const pending: unknown[] = [value];
+  let provedTermination = false;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    if (current instanceof UciProcessTerminationError) {
+      if (!current.processTerminated) {
+        return false;
+      }
+      provedTermination = true;
+    } else if (current instanceof UciProcessExitError) {
+      provedTermination = true;
+    }
+    if (current instanceof AggregateError) {
+      for (const nested of current.errors as readonly unknown[]) {
+        pending.push(nested);
+      }
+    }
+    if (current instanceof Error && current.cause !== undefined) {
+      pending.push(current.cause);
+    }
+  }
+  return provedTermination;
 }

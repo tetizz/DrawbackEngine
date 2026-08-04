@@ -1,7 +1,4 @@
 import { parentPort, workerData } from "node:worker_threads";
-import {
-  createNodeUciTurnConstraintProvider,
-} from "@drawbackengine/chess-evaluator";
 import { deriveGameSeed } from "./batch.js";
 import {
   resolveCatalogAgent,
@@ -10,55 +7,15 @@ import {
 } from "./catalog.js";
 import { simulateGame } from "./simulation.js";
 import {
-  simulatePreparedCatalogAssignedGame,
-  simulatePreparedCatalogGame,
-} from "./prepared-catalog.js";
-import {
   assertParallelWorkerRequest,
   type ParallelWorkerRequest,
   type ParallelWorkerResponse,
 } from "./parallel.js";
 
-async function run(
+function run(
   request: ParallelWorkerRequest,
-): Promise<ParallelWorkerResponse> {
+): ParallelWorkerResponse {
   assertParallelWorkerRequest(request);
-  if ("kind" in request) {
-    const provider = await createNodeUciTurnConstraintProvider(
-      request.evaluator,
-    );
-    try {
-      const games: ParallelWorkerResponse["games"][number][] = [];
-      if (request.kind === "prepared-catalog-assignments") {
-        for (const { gameIndex, assignment } of request.assignedGames) {
-          games.push({
-            gameIndex,
-            result: await simulatePreparedCatalogAssignedGame(
-              assignment,
-              provider,
-              request.maxPlies === undefined
-                ? {}
-                : { maxPlies: request.maxPlies },
-            ),
-          });
-        }
-      } else {
-        for (const { gameIndex, seed } of request.seededGames) {
-          games.push({
-            gameIndex,
-            result: await simulatePreparedCatalogGame(
-              seed,
-              provider,
-              request.catalog,
-            ),
-          });
-        }
-      }
-      return { games };
-    } finally {
-      await provider.dispose();
-    }
-  }
   if ("seededGames" in request) {
     return {
       games: request.seededGames.map(({ gameIndex, seed }) => ({
@@ -101,7 +58,7 @@ if (parentPort === null) {
 
 try {
   parentPort.postMessage(
-    await run(workerData as ParallelWorkerRequest),
+    run(workerData as ParallelWorkerRequest),
   );
 } catch (error: unknown) {
   const message = error instanceof Error ? error.message : "Unknown worker failure.";

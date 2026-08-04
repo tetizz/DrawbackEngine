@@ -1,6 +1,10 @@
 import { Worker } from "node:worker_threads";
-import type {
-  NodeUciTurnConstraintProviderConfig,
+import {
+  AuthenticatedNodeUciEngineCloseError,
+  createNodeUciTurnConstraintProvider,
+  errorProvesUciProcessTerminated,
+  type NodeUciTurnConstraintProviderConfig,
+  type UciTurnConstraintProvider,
 } from "@drawbackengine/chess-evaluator";
 import type { SimulationResult } from "./simulation.js";
 import type {
@@ -13,8 +17,15 @@ import type {
   PreparedCatalogGameAssignment,
   PreparedCatalogSelectionOptions,
 } from "./prepared-catalog.js";
-import { PREPARED_EXECUTABLE_RULE_IDS } from "./prepared-catalog.js";
-import { retryParallelWorkerOperation } from "./worker-retry.js";
+import {
+  PREPARED_EXECUTABLE_RULE_IDS,
+  simulatePreparedCatalogAssignedGame,
+  simulatePreparedCatalogGame,
+} from "./prepared-catalog.js";
+import {
+  TransientParallelWorkerError,
+  retryParallelWorkerOperation,
+} from "./worker-retry.js";
 
 export type ParallelRuleId = ExecutableRuleId;
 export type ParallelAgentId = CatalogAgentId;
@@ -81,30 +92,43 @@ export type ParallelWorkerRequest =
         readonly seed: number;
       }[];
       readonly catalog: CatalogSelectionOptions;
-    }
-  | {
-      readonly schemaVersion: 2;
-      readonly kind: "prepared-catalog-seeds";
-      readonly seededGames: readonly {
-        readonly gameIndex: number;
-        readonly seed: number;
-      }[];
-      readonly catalog: PreparedCatalogSelectionOptions;
-      readonly evaluator: NodeUciTurnConstraintProviderConfig;
-    }
-  | {
-      readonly schemaVersion: 3;
-      readonly kind: "prepared-catalog-assignments";
-      readonly assignedGames: readonly {
-        readonly gameIndex: number;
-        readonly assignment: PreparedCatalogGameAssignment;
-      }[];
-      readonly evaluator: NodeUciTurnConstraintProviderConfig;
-      readonly maxPlies?: number;
     };
 
 export interface ParallelWorkerResponse {
   readonly games: readonly IndexedSimulationResult[];
+}
+
+/** Prepared evaluator cleanup remains owned and retryable by the caller. */
+export class PreparedEvaluatorCleanupError extends AggregateError {
+  public readonly cleanupComplete = false;
+
+  public constructor(
+    failures: readonly unknown[],
+    private readonly provider: UciTurnConstraintProvider,
+  ) {
+    super(
+      failures,
+      "Parent-owned prepared evaluator cleanup remains incomplete.",
+    );
+    this.name = "PreparedEvaluatorCleanupError";
+  }
+
+  public async retryCleanup(): Promise<void> {
+    try {
+      await disposePreparedProvider(this.provider);
+    } catch (error: unknown) {
+      if (error instanceof PreparedEvaluatorCleanupError) {
+        throw new PreparedEvaluatorCleanupError(
+          [...this.errors as readonly unknown[], ...error.errors as readonly unknown[]],
+          this.provider,
+        );
+      }
+      throw new AggregateError(
+        [...this.errors as readonly unknown[], error],
+        "Prepared evaluator cleanup completed abnormally after a retained retry.",
+      );
+    }
+  }
 }
 
 function positiveSafeInteger(value: number, label: string): void {
@@ -143,19 +167,32 @@ function runWorkerOnce(
       worker.removeAllListeners("error");
       worker.removeAllListeners("exit");
     };
-    worker.once("message", (response: ParallelWorkerResponse) => {
-      settled = true;
-      cleanup();
-      resolve(response);
+    worker.once("message", (value: unknown) => {
+      try {
+        assertParallelWorkerResponse(value);
+        settled = true;
+        cleanup();
+        resolve(value);
+      } catch (error: unknown) {
+        settled = true;
+        cleanup();
+        reject(
+          error instanceof Error
+            ? error
+            : new TypeError("Parallel worker response validation failed."),
+        );
+      }
     });
     worker.once("error", (error) => {
       if (!settled) {
         settled = true;
         cleanup();
         reject(
-          error instanceof Error
-            ? error
-            : new Error("Parallel simulation worker failed."),
+          new TransientParallelWorkerError(
+            "worker-process-error",
+            "Parallel simulation worker process failed.",
+            { cause: error },
+          ),
         );
       }
     });
@@ -164,7 +201,8 @@ function runWorkerOnce(
         settled = true;
         cleanup();
         reject(
-          new Error(
+          new TransientParallelWorkerError(
+            "worker-process-exit",
             `Parallel simulation worker exited before responding with code ${String(code)}.`,
           ),
         );
@@ -317,144 +355,99 @@ function taggedObject(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+export function assertParallelWorkerResponse(
+  value: unknown,
+): asserts value is ParallelWorkerResponse {
+  const response = taggedObject(value, "parallel worker response");
+  exactObjectKeys(response, ["games"], "parallel worker response");
+  if (!Array.isArray(response["games"])) {
+    throw new TypeError(
+      "parallel worker response games must be an array.",
+    );
+  }
+}
+
 export function assertParallelWorkerRequest(
   value: unknown,
 ): asserts value is ParallelWorkerRequest {
   const request = taggedObject(value, "parallel worker request");
-  if (!Object.hasOwn(request, "kind")) {
+  if (Object.hasOwn(request, "kind")) {
+    throw new TypeError(
+      "Prepared evaluator requests are parent-owned and cannot cross the worker boundary.",
+    );
+  }
+  if (Object.hasOwn(request, "seededGames")) {
+    exactObjectKeys(request, ["seededGames", "catalog"], "seeded worker request");
     return;
   }
-  if (
-    request["kind"] === "prepared-catalog-seeds"
-    && request["schemaVersion"] === 2
-  ) {
+  if (Object.hasOwn(request, "catalog")) {
     exactObjectKeys(
       request,
-      ["schemaVersion", "kind", "seededGames", "catalog", "evaluator"],
-      "prepared seed request",
+      ["batchSeed", "gameIndexes", "catalog"],
+      "catalog worker request",
     );
     return;
   }
-  if (
-    request["kind"] !== "prepared-catalog-assignments"
-    || request["schemaVersion"] !== 3
-  ) {
-    throw new TypeError("parallel worker request schema/kind is unsupported.");
-  }
-  const expected = ["schemaVersion", "kind", "assignedGames", "evaluator"];
-  if (request["maxPlies"] !== undefined) {
-    expected.push("maxPlies");
-    positiveSafeInteger(request["maxPlies"] as number, "maxPlies");
-  }
-  exactObjectKeys(request, expected, "prepared assignment request");
-  if (
-    !Array.isArray(request["assignedGames"])
-    || request["assignedGames"].length === 0
-  ) {
-    throw new TypeError("assignedGames must be a non-empty array.");
-  }
-  const indexes = new Set<number>();
-  for (const rawGame of request["assignedGames"]) {
-    const game = taggedObject(rawGame, "assigned game");
-    exactObjectKeys(game, ["gameIndex", "assignment"], "assigned game");
-    const gameIndex = game["gameIndex"];
-    if (
-      !Number.isSafeInteger(gameIndex)
-      || (gameIndex as number) < 0
-      || indexes.has(gameIndex as number)
-    ) {
-      throw new RangeError(
-        "assigned game indexes must be unique non-negative safe integers.",
-      );
-    }
-    indexes.add(gameIndex as number);
-    const assignment = taggedObject(game["assignment"], "game assignment");
-    exactObjectKeys(
-      assignment,
-      [
-        "seed",
-        "whiteRuleId",
-        "blackRuleId",
-        "whiteAgentId",
-        "blackAgentId",
-      ],
-      "game assignment",
-    );
-    const seed = assignment["seed"];
-    if (
-      !Number.isSafeInteger(seed)
-      || (seed as number) < 0
-      || (seed as number) > 0xffff_ffff
-    ) {
-      throw new RangeError("game assignment seed must be uint32.");
-    }
-    for (const key of ["whiteRuleId", "blackRuleId"] as const) {
-      if (
-        !PREPARED_EXECUTABLE_RULE_IDS.includes(
-          assignment[key] as PreparedCatalogGameAssignment[typeof key],
-        )
-      ) {
-        throw new RangeError(`${key} is outside the prepared catalog.`);
-      }
-    }
-    for (const key of ["whiteAgentId", "blackAgentId"] as const) {
-      if (
-        !CATALOG_AGENT_IDS.includes(
-          assignment[key] as CatalogAgentId,
-        )
-      ) {
-        throw new RangeError(`${key} is outside the agent catalog.`);
-      }
-    }
-  }
+  exactObjectKeys(
+    request,
+    ["batchSeed", "gameIndexes", "spec"],
+    "simulation worker request",
+  );
 }
 
 export async function simulatePreparedCatalogSeedsParallel(
   request: PreparedCatalogSeedBatchRequest,
 ): Promise<readonly SimulationResult[]> {
   positiveSafeInteger(request.workers, "workers");
-  if (request.seeds.length === 0) {
+  const seeds = [...request.seeds];
+  if (seeds.length === 0) {
     return [];
   }
-  if (new Set(request.seeds).size !== request.seeds.length) {
+  if (new Set(seeds).size !== seeds.length) {
     throw new RangeError("explicit prepared game seeds must be unique.");
   }
-  const workerCount = Math.min(request.seeds.length, request.workers);
+  const catalog = snapshotPreparedCatalogOptions(request);
+  const evaluator = structuredClone(request.evaluator);
+  const workerCount = Math.min(seeds.length, request.workers);
   const assignments = Array.from(
     { length: workerCount },
     (): { gameIndex: number; seed: number }[] => [],
   );
-  request.seeds.forEach((seed, gameIndex) => {
+  seeds.forEach((seed, gameIndex) => {
     if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
       throw new RangeError("prepared game seeds must be unsigned 32-bit integers.");
     }
     assignments[gameIndex % workerCount]?.push({ gameIndex, seed });
   });
-  const catalog: PreparedCatalogSelectionOptions = {
-    ...(request.ruleIds === undefined ? {} : { ruleIds: request.ruleIds }),
-    ...(request.agentIds === undefined ? {} : { agentIds: request.agentIds }),
-    ...(request.maxPlies === undefined ? {} : { maxPlies: request.maxPlies }),
-  };
-  const responses = await Promise.all(
+  const responses = await settlePreparedShards(
     assignments.map((seededGames) =>
-      runWorker({
-        schemaVersion: 2,
-        kind: "prepared-catalog-seeds",
-        seededGames,
-        catalog,
-        evaluator: request.evaluator,
+      runPreparedParentShard(evaluator, async (provider) => {
+        const games: ParallelWorkerResponse["games"][number][] = [];
+        for (const { gameIndex, seed } of seededGames) {
+          games.push({
+            gameIndex,
+            result: await simulatePreparedCatalogGame(
+              seed,
+              provider,
+              catalog,
+            ),
+          });
+        }
+        return { games };
       }),
     ),
   );
   const indexed = responses
     .flatMap((response) => response.games)
     .sort((left, right) => left.gameIndex - right.gameIndex);
-  if (indexed.length !== request.seeds.length) {
-    throw new Error("Prepared workers returned an incomplete game batch.");
+  if (indexed.length !== seeds.length) {
+    throw new Error("Prepared evaluator shards returned an incomplete game batch.");
   }
   return indexed.map((item, expectedIndex) => {
     if (item.gameIndex !== expectedIndex) {
-      throw new Error("Prepared workers returned duplicate or missing indexes.");
+      throw new Error(
+        "Prepared evaluator shards returned duplicate or missing indexes.",
+      );
     }
     return item.result;
   });
@@ -466,18 +459,87 @@ function runWorker(
   return retryParallelWorkerOperation(() => runWorkerOnce(request));
 }
 
+async function runPreparedParentShard(
+  evaluator: NodeUciTurnConstraintProviderConfig,
+  operation: (
+    provider: UciTurnConstraintProvider,
+  ) => Promise<ParallelWorkerResponse>,
+): Promise<ParallelWorkerResponse> {
+  const provider = await createNodeUciTurnConstraintProvider(evaluator);
+  const outcome = await operation(provider).then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  const cleanup = await disposePreparedProvider(provider).then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  if (!outcome.ok && !cleanup.ok) {
+    throw new AggregateError(
+      [outcome.error, cleanup.error],
+      "Prepared simulation and evaluator cleanup both failed.",
+    );
+  }
+  if (!outcome.ok) {
+    throw outcome.error;
+  }
+  if (!cleanup.ok) {
+    throw cleanup.error;
+  }
+  return outcome.value;
+}
+
+async function disposePreparedProvider(
+  provider: UciTurnConstraintProvider,
+): Promise<void> {
+  const failures: unknown[] = [];
+  try {
+    await provider.dispose();
+  } catch (firstFailure: unknown) {
+    failures.push(firstFailure);
+    if (preparedCleanupIsComplete(firstFailure)) {
+      throw firstFailure;
+    }
+    try {
+      await provider.dispose();
+    } catch (secondFailure: unknown) {
+      failures.push(secondFailure);
+      if (!preparedCleanupIsComplete(secondFailure)) {
+        throw new PreparedEvaluatorCleanupError(failures, provider);
+      }
+      throw new AggregateError(
+        failures,
+        "Parent-owned prepared evaluator cleanup completed abnormally after retry.",
+      );
+    }
+  }
+}
+
+function preparedCleanupIsComplete(error: unknown): boolean {
+  if (error instanceof AuthenticatedNodeUciEngineCloseError) {
+    return error.privateExecutableRemoved && error.processTerminated;
+  }
+  return errorProvesUciProcessTerminated(error);
+}
+
 export async function simulatePreparedCatalogAssignmentsParallel(
   request: PreparedCatalogAssignmentBatchRequest,
 ): Promise<readonly SimulationResult[]> {
   positiveSafeInteger(request.workers, "workers");
-  if (request.assignments.length === 0) {
+  const immutableAssignments = snapshotPreparedAssignments(request.assignments);
+  if (immutableAssignments.length === 0) {
     return [];
   }
-  const seeds = request.assignments.map((assignment) => assignment.seed);
+  if (request.maxPlies !== undefined) {
+    positiveSafeInteger(request.maxPlies, "maxPlies");
+  }
+  const maxPlies = request.maxPlies;
+  const evaluator = structuredClone(request.evaluator);
+  const seeds = immutableAssignments.map((assignment) => assignment.seed);
   if (new Set(seeds).size !== seeds.length) {
     throw new RangeError("explicit prepared assignment seeds must be unique.");
   }
-  const workerCount = Math.min(request.assignments.length, request.workers);
+  const workerCount = Math.min(immutableAssignments.length, request.workers);
   const assignments = Array.from(
     { length: workerCount },
     (): {
@@ -485,7 +547,125 @@ export async function simulatePreparedCatalogAssignmentsParallel(
       assignment: PreparedCatalogGameAssignment;
     }[] => [],
   );
-  request.assignments.forEach((assignment, gameIndex) => {
+  immutableAssignments.forEach((assignment, gameIndex) => {
+    assignments[gameIndex % workerCount]?.push({ gameIndex, assignment });
+  });
+  const responses = await settlePreparedShards(
+    assignments.map((assignedGames) =>
+      runPreparedParentShard(evaluator, async (provider) => {
+        const games: ParallelWorkerResponse["games"][number][] = [];
+        for (const { gameIndex, assignment } of assignedGames) {
+          games.push({
+            gameIndex,
+            result: await simulatePreparedCatalogAssignedGame(
+              assignment,
+              provider,
+              maxPlies === undefined
+                ? {}
+                : { maxPlies },
+            ),
+          });
+        }
+        return { games };
+      }),
+    ),
+  );
+  const indexed = responses
+    .flatMap((response) => response.games)
+    .sort((left, right) => left.gameIndex - right.gameIndex);
+  if (indexed.length !== immutableAssignments.length) {
+    throw new Error(
+      "Prepared assignment evaluator shards returned an incomplete batch.",
+    );
+  }
+  return indexed.map((item, expectedIndex) => {
+    if (item.gameIndex !== expectedIndex) {
+      throw new Error(
+        "Prepared assignment evaluator shards returned duplicate or missing indexes.",
+      );
+    }
+    return item.result;
+  });
+}
+
+async function settlePreparedShards(
+  shards: readonly Promise<ParallelWorkerResponse>[],
+): Promise<readonly ParallelWorkerResponse[]> {
+  const settled = await Promise.allSettled(shards);
+  const failures = settled.flatMap((result) =>
+    result.status === "rejected" ? [result.reason as unknown] : []
+  );
+  if (failures.length > 0) {
+    throw failures.length === 1
+      ? failures[0]
+      : new AggregateError(
+          failures,
+          "Multiple parent-owned prepared evaluator shards failed.",
+        );
+  }
+  return settled.map((result) => {
+    if (result.status !== "fulfilled") {
+      throw new Error("Prepared evaluator shard settlement was lost.");
+    }
+    return result.value;
+  });
+}
+
+function snapshotPreparedCatalogOptions(
+  options: PreparedCatalogSelectionOptions,
+): PreparedCatalogSelectionOptions {
+  if (options.maxPlies !== undefined) {
+    positiveSafeInteger(options.maxPlies, "maxPlies");
+  }
+  const ruleIds = options.ruleIds === undefined
+    ? undefined
+    : [...options.ruleIds];
+  const agentIds = options.agentIds === undefined
+    ? undefined
+    : [...options.agentIds];
+  if (ruleIds !== undefined) {
+    if (ruleIds.length === 0) {
+      throw new RangeError("prepared rule selection cannot be empty.");
+    }
+    for (const ruleId of ruleIds) {
+      if (!PREPARED_EXECUTABLE_RULE_IDS.includes(ruleId)) {
+        throw new RangeError("prepared rule selection is outside the catalog.");
+      }
+    }
+  }
+  if (agentIds !== undefined) {
+    if (agentIds.length === 0) {
+      throw new RangeError("prepared agent selection cannot be empty.");
+    }
+    for (const agentId of agentIds) {
+      if (!CATALOG_AGENT_IDS.includes(agentId)) {
+        throw new RangeError("prepared agent selection is outside the catalog.");
+      }
+    }
+  }
+  return Object.freeze({
+    ...(ruleIds === undefined ? {} : { ruleIds: Object.freeze(ruleIds) }),
+    ...(agentIds === undefined ? {} : { agentIds: Object.freeze(agentIds) }),
+    ...(options.maxPlies === undefined ? {} : { maxPlies: options.maxPlies }),
+  });
+}
+
+function snapshotPreparedAssignments(
+  assignments: readonly PreparedCatalogGameAssignment[],
+): readonly PreparedCatalogGameAssignment[] {
+  return Object.freeze(assignments.map((assignment) => {
+    const record = taggedObject(assignment, "prepared game assignment");
+    exactObjectKeys(
+      record,
+      [
+        "seed",
+        "whiteRuleId",
+        "blackRuleId",
+        "whiteAgentId",
+        "blackAgentId",
+      ],
+      "prepared game assignment",
+    );
     if (
       !Number.isSafeInteger(assignment.seed)
       || assignment.seed < 0
@@ -495,33 +675,22 @@ export async function simulatePreparedCatalogAssignmentsParallel(
         "prepared assignment seeds must be unsigned 32-bit integers.",
       );
     }
-    assignments[gameIndex % workerCount]?.push({ gameIndex, assignment });
-  });
-  const responses = await Promise.all(
-    assignments.map((assignedGames) =>
-      runWorker({
-        schemaVersion: 3,
-        kind: "prepared-catalog-assignments",
-        assignedGames,
-        evaluator: request.evaluator,
-        ...(request.maxPlies === undefined
-          ? {}
-          : { maxPlies: request.maxPlies }),
-      }),
-    ),
-  );
-  const indexed = responses
-    .flatMap((response) => response.games)
-    .sort((left, right) => left.gameIndex - right.gameIndex);
-  if (indexed.length !== request.assignments.length) {
-    throw new Error("Prepared assignment workers returned an incomplete batch.");
-  }
-  return indexed.map((item, expectedIndex) => {
-    if (item.gameIndex !== expectedIndex) {
-      throw new Error(
-        "Prepared assignment workers returned duplicate or missing indexes.",
-      );
+    for (const ruleId of [
+      assignment.whiteRuleId,
+      assignment.blackRuleId,
+    ]) {
+      if (!PREPARED_EXECUTABLE_RULE_IDS.includes(ruleId)) {
+        throw new RangeError("prepared assignment rule is outside the catalog.");
+      }
     }
-    return item.result;
-  });
+    for (const agentId of [
+      assignment.whiteAgentId,
+      assignment.blackAgentId,
+    ]) {
+      if (!CATALOG_AGENT_IDS.includes(agentId)) {
+        throw new RangeError("prepared assignment agent is outside the catalog.");
+      }
+    }
+    return Object.freeze({ ...assignment });
+  }));
 }

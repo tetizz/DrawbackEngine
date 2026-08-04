@@ -48,6 +48,10 @@ export {
   simulatePlayerPrivateAssignmentsParallel,
 } from "./player-private-parallel.js";
 export {
+  PlayerPrivateWorkerPoolCleanupError,
+  PlayerPrivateWorkerPoolCreationError,
+} from "./player-private-worker-pool.js";
+export {
   createPlayerPrivateAssignmentSchedule,
   PLAYER_PRIVATE_DATA_SPLITS,
 } from "./player-private-assignment-scheduler.js";
@@ -73,6 +77,7 @@ export {
 export type {
   PlayerPrivateOpponentHypothesisPolicy,
   PlayerPrivateAssignmentBatchRequest,
+  PlayerPrivateEvaluatorPolicy,
   PlayerPrivateGameAssignment,
   PlayerPrivateSearchPolicy,
   PlayerPrivateWorkerRequest,
@@ -98,6 +103,30 @@ export type {
   PlayerPrivateTrainingProfile,
   PlayerPrivateTrainingScenario,
 } from "./player-private-scenarios.js";
+export {
+  schema9EngineSchedule,
+  SCHEMA9_GENERATOR_CONFIG,
+  SCHEMA9_GENERATOR_COMPLETION_FORMAT,
+  SCHEMA9_GENERATOR_LAUNCH_FORMAT,
+  SCHEMA9_GENERATOR_RECEIPT_VERSION,
+  SCHEMA9_COORDINATOR_COMPONENT_ID,
+  SCHEMA9_LEDGER_SPLITS,
+  SCHEMA9_PARALLEL_WORKER_COMPONENT_ID,
+  SCHEMA9_PRODUCER_RUNTIME_ALGORITHM,
+  SCHEMA9_PRODUCER_RUNTIME_FORMAT,
+  SCHEMA9_PRODUCER_RUNTIME_VERSION,
+  SCHEMA9_SCHEDULE_AUTHORITY_ID,
+  SCHEMA9_SCHEDULE_PROFILE,
+  SCHEMA9_SPLIT_SEED_ROOTS,
+} from "./schema9-schedule.js";
+export type {
+  Schema9EngineSchedule,
+  Schema9LedgerSplit,
+  Schema9ProducerRuntimeIdentity,
+  Schema9RuntimeComponentIdentity,
+  Schema9RuntimeDescriptor,
+  Schema9SeedRoots,
+} from "./schema9-schedule.js";
 export type { BatchConfig, CatalogBatchConfig } from "./batch.js";
 export {
   CATALOG_AGENT_IDS,
@@ -127,6 +156,7 @@ export type {
   PreparedExecutableRuleId,
 } from "./prepared-catalog.js";
 export {
+  PreparedEvaluatorCleanupError,
   simulateBatchParallel,
   simulateCatalogBatchParallel,
   simulateCatalogSeedsParallel,
@@ -158,3 +188,49 @@ export type {
   SimulationPly,
   SimulationResult,
 } from "./simulation.js";
+export {
+  PlayerPrivatePlayGame,
+  PlayerPrivatePlayStateError,
+} from "./player-private-play.js";
+export type {
+  DrawbackPlayReveal,
+  OwnDrawbackDisclosure,
+  PlayerActionSubmission,
+  PlayerObservedPiece,
+  PlayerObservedSquare,
+  PlayerPlayAction,
+  PlayerPlayObservationV1,
+  PlayerPlayStatus,
+  PlayerPrivateEngineMove,
+  PlayerPrivatePlayDependencies,
+  PlayerPrivatePlayOptions,
+  PlayerPrivatePlayReveal,
+  PlayerPrivatePlaySearch,
+  PlayerPrivatePlaySearchRequest,
+  PlayerVisibleMove,
+} from "./player-private-play.js";
+export {
+  PLAYER_PRIVATE_STRENGTH_REPORT_FORMAT,
+  runPlayerPrivateStrengthHarness,
+} from "./player-private-strength.js";
+export type {
+  PlayerPrivateStrengthEvaluatorKind,
+  PlayerPrivateStrengthHarnessOptions,
+  PlayerPrivateStrengthLegResult,
+  PlayerPrivateStrengthPairResult,
+  PlayerPrivateStrengthParticipant,
+  PlayerPrivateStrengthParticipantSnapshot,
+  PlayerPrivateStrengthReport,
+} from "./player-private-strength.js";
+export {
+  DEFAULT_STRENGTH_CONFIDENCE_LEVEL,
+  summarizePairedStrengthScores,
+} from "./player-private-strength-statistics.js";
+export type {
+  CandidateGameScore,
+  PairedCandidateGameScores,
+  PairedScoreUncertainty,
+  PairedStrengthScoreSummary,
+  StrengthScoreBounds,
+  StrengthScoreLine,
+} from "./player-private-strength-statistics.js";

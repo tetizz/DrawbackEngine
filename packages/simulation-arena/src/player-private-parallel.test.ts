@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveNodeUciLeafEvaluatorId,
+  type NodeStockfishLeafEvaluatorConfig,
+} from "@drawbackengine/chess-evaluator";
+import {
   simulatePlayerPrivateAssignmentsParallel,
 } from "./player-private-parallel.js";
 import {
@@ -33,6 +37,38 @@ const policy: PlayerPrivateSearchPolicy = {
   opponentHypotheses: {
     kind: "unrestricted-baseline",
     version: 1,
+  },
+};
+
+const nodeUciConfig: NodeStockfishLeafEvaluatorConfig = {
+  kind: "stockfish",
+  process: {
+    executablePath: process.execPath,
+    executableSha256: "0".repeat(64),
+    cwd: process.cwd(),
+    shutdownTimeoutMs: 2_000,
+    runtimeContextSha256: "b".repeat(64),
+  },
+  client: { timeoutMs: 5_000 },
+  engineIdentity: {
+    uciName: "Pinned Test Engine",
+    engine: "stockfish",
+    version: "test",
+    advertisedOptionsSha256: "1".repeat(64),
+  },
+  depth: 4,
+  hashMb: 64,
+  unsupportedPosition: "error",
+};
+
+const nodeUciPolicy: PlayerPrivateSearchPolicy = {
+  ...policy,
+  policyId: "node-uci-search-v1",
+  evaluator: {
+    kind: "node-uci-leaf",
+    version: 1,
+    evaluatorId: deriveNodeUciLeafEvaluatorId(nodeUciConfig),
+    config: nodeUciConfig,
   },
 };
 
@@ -185,6 +221,22 @@ describe("parallel player-private simulation", () => {
         }],
       });
     }).toThrow();
+  });
+
+  it("rejects private Node UCI configuration from legacy worker requests", () => {
+    const request = {
+      schemaVersion: 1,
+      kind: "player-private-assignments",
+      assignedGames: [{
+        gameIndex: 0,
+        assignment: assignments[0],
+      }],
+      policy: nodeUciPolicy,
+      maxPlies: 2,
+    } as const;
+    expect(() => {
+      assertPlayerPrivateWorkerRequest(request);
+    }).toThrow("only the path-free material evaluator");
   });
 
   it("snapshots caller-owned assignments and policy before worker retries", async () => {

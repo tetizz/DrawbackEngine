@@ -30,6 +30,7 @@ export interface CompletedPgnEvaluatorPolicy {
     readonly engine: string;
     readonly version: string;
     readonly executableSha256: string;
+    /** Composite digest of UCI settings and the pinned runtime manifest. */
     readonly optionsDigest: string;
     readonly publicFingerprint: string;
   };

@@ -33,6 +33,7 @@ are not included.
 ```text
 apps/
   engine-cli/             local demos, exact move search, and PGN sidecars
+  play-web/               local human-vs-engine browser game
 packages/
   shared/                 colors and deterministic random sources
   drawback-engine/        rule contracts, rules, filters, and losses
@@ -84,6 +85,40 @@ pnpm test:arena
 pnpm catalog:verify-evidence
 ```
 
+## Play against the engine
+
+Build and launch the local browser board with an authenticated Fairy-Stockfish
+configuration:
+
+```bash
+pnpm play:web -- --evaluator-config C:\trusted\fairy-stockfish.json
+```
+
+Open the printed `http://127.0.0.1:4173` address. The app supports full games,
+click or drag moves, promotion, board flipping, legal-target highlighting,
+resignation, a post-game drawback reveal, and responsive keyboard-accessible
+controls.
+
+This browser surface currently offers the frozen audited 25-rule
+player-private catalog. It does not claim support for every authority-compatible
+or observed drawback in interactive player-private search.
+
+The Quick, Balanced, and Deep choices are exact outer-search budgets, not Elo
+claims. Their configured depth and node cap remain visible during the game;
+the configured Fairy-Stockfish leaf depth, Hash, thread count, and fixed skill
+setting are shown separately. Every computer move calls the player-private
+drawback search and authenticated evaluator. There are no scripted moves or
+material-evaluator fallbacks.
+
+Browser play binds only to IPv4 loopback, requires same-origin state changes,
+and never sends FEN, SAN, captured-piece metadata, search scores, completed
+work counters, opponent hypotheses, hidden state, or local paths to the page.
+Only the player's own drawback is visible before the game ends. See
+[`docs/architecture/local-play-web.md`](docs/architecture/local-play-web.md)
+for the security and lifecycle contract. The evaluator JSON format is the
+Fairy-Stockfish form documented in
+[`docs/architecture/player-private-uci-workers.md`](docs/architecture/player-private-uci-workers.md).
+
 ## CLI
 
 Run a deterministic hidden-drawback game:
@@ -127,6 +162,49 @@ held-out files. The scheduler balances ordered drawback pairs independently
 inside each split, keeps their gameplay seeds disjoint, and streams without
 materializing the corpus in RAM. DrawbackGuesser must convert and validate
 these privileged traces before model training.
+
+For the frozen DrawbackGuesser Schema 9 schedule, use the receipt-producing
+bundle command instead of the positional batch command:
+
+```bash
+pnpm --filter @drawbackengine/cli player-private:schema9 -- \
+  --ledger-split train \
+  --games 25 \
+  --workers 4 \
+  --schedule-id schema9-smoke-v1 \
+  --bundle /trusted/private/schema9/train \
+  --engine-repository /absolute/path/to/DrawbackEngine
+```
+
+Run the same command separately for `validation-a`, `validation-b`, and
+`test`. Each final directory contains `trace.ndjson`, `launch.json`, and
+`completion.json`. The command accepts only a clean executing Engine checkout,
+refuses output inside that checkout, authenticates the completed trace bytes,
+and atomically publishes without clobbering an existing bundle. Create the
+trusted output parent first; symlinked or junction parents are canonicalized
+and cannot redirect private output into the checkout. See
+[`docs/architecture/schema9-player-private-bundles.md`](docs/architecture/schema9-player-private-bundles.md)
+for the frozen schedule, receipt contract, and interruption behavior.
+
+The final two optional values select the leaf evaluator and its private
+configuration. `material` remains the default. `node-uci-leaf` starts one
+authenticated, caller-depth Stockfish or Fairy-Stockfish leaf process per
+parent-owned simulation slot:
+
+```bash
+pnpm --filter @drawbackengine/cli player-private:batch -- \
+  train 1000 200 200 8 448663553 1785536514 2586451971 \
+  /trusted/output/player-private-train.ndjson \
+  120 32 2 50000 35 standard node-uci-leaf \
+  /trusted/config/stockfish.json
+```
+
+The configuration and binaries stay outside the repository. The executable
+bytes, UCI identity, advertised options, fixed strength-related UCI settings,
+and search depth are authenticated before use; there is no silent material
+fallback. Progress and completion are emitted as path-free JSON. See
+[`docs/architecture/player-private-uci-workers.md`](docs/architecture/player-private-uci-workers.md)
+for the exact schema, lifecycle, and fail-closed limitations.
 
 The `king-capture-diagnostics-v1` profile restricts labels to the five audited
 king-capture drawbacks and starts from eight public, symmetric diagnostic
@@ -184,11 +262,17 @@ pnpm --filter @drawbackengine/cli oracle:move -- \
 
 The current oracle command demonstrates a Vegan-versus-Checkers game and
 prints its fixed knowledge mode. It refuses to run unless the supplied engine
-binary matches the expected SHA-256 digest.
+binary matches the expected SHA-256 digest. It is a local demonstration CLI,
+not the authenticated simulation runner: it does not stage a private executable
+copy or pin the engine's advertised UCI option surface. Run it only from a
+trusted path that cannot change after verification. Use `player-private:batch`
+with `node-uci-leaf` for authenticated, long-running simulation work.
 
-Use `--engine-kind fairy-stockfish` together with
-`--variant-path data/catalog/drawbackchess-fairy-v1.ini` for the optional Fairy
-leaf evaluator. The adapter authenticates the exact variant bytes before use.
+Use `--engine-kind fairy-stockfish` together with an absolute path to the
+repository's `data/catalog/drawbackchess-fairy-v1.ini` file for the optional
+Fairy leaf evaluator. Filtered pnpm commands run from the CLI package directory,
+so a repository-root-relative `data/catalog/...` path will not resolve there.
+The adapter authenticates the exact variant bytes before use.
 
 ## Rule status
 

@@ -11,12 +11,15 @@ The checked-in custom variant is:
 
 ```text
 data/catalog/drawbackchess-fairy-v1.ini
-SHA-256 af2c525591025d93e7ba7552c853c8126a5d0334d5634eb2e57b9f171ad058d3
+SHA-256 06f444eddf2f4b42ca55e50e317411b01509ee3178c95ec5fcaf26cbdde2a5b9
 ```
 
 It inherits chess geometry and sets:
 
 ```ini
+king = -
+commoner = k
+castlingKingPiece = k
 checking = false
 extinctionValue = loss
 extinctionPieceTypes = k
@@ -25,8 +28,11 @@ nFoldRule = 0
 nMoveRule = 0
 ```
 
-The `checking=false` setting is important. An earlier commoner-based draft did
-not validate with inherited chess castling and was rejected before integration.
+The commoner mapping is essential: Fairy-Stockfish otherwise adjudicates an
+attacked royal king before applying the exact root mask, returning no move in a
+non-terminal Drawback position. `castlingKingPiece=k` explicitly assigns the
+inherited castling geometry to that commoner; the official variant checker and
+real binary both accept the configuration.
 
 ## Real binary smoke
 
@@ -49,6 +55,12 @@ It also accepted `e7e8` as a root move in
 `4k3/4Q3/8/8/8/8/8/K7 w - - 0 1`, demonstrating literal king capture, and the
 production TypeScript adapter returned an exact mate-normalized score for a
 non-orthodox root mask that exposes the moving player's king.
+
+The regression position
+`rnbqkQnr/ppppp1pp/8/8/4p3/8/PPPP1PPP/RNB1KBNR b KQkq - 0 3` was also checked
+with a 20-move exact root mask. The engine returned `e4e3` instead of the
+incorrect terminal `bestmove (none)`. A castling-only mask on
+`r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1` returned `e1g1`.
 
 The release executable is not committed. Callers must acquire and authenticate
 their own pinned binary.

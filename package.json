@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm -r --if-present build",
+    "build": "pnpm -r --if-present build && node scripts/normalize-built-artifacts.mjs",
     "typecheck": "pnpm build && pnpm -r --if-present typecheck",
     "lint": "eslint . --max-warnings 0",
     "test": "pnpm build && vitest run",
@@ -18,6 +18,8 @@
     "catalog:verify-evidence": "node scripts/validate-rule-verification-evidence.mjs",
     "benchmark:posterior": "pnpm build && node scripts/benchmark-posterior-aggregation.mjs",
     "benchmark:posterior:combine": "node scripts/combine-posterior-benchmark-shards.mjs",
+    "arena:strength": "pnpm --filter @drawbackengine/cli player-private:strength --",
+    "play:web": "pnpm --filter @drawbackengine/play-web... build && pnpm --filter @drawbackengine/play-web start --",
     "check:boundaries": "node scripts/check-repository-boundaries.mjs",
     "smoke:packages": "node scripts/smoke-built-packages.mjs",
     "check": "pnpm typecheck && pnpm lint && pnpm catalog:verify-evidence && pnpm check:boundaries && vitest run && pnpm smoke:packages"

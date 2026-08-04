@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { DrawbackGameSession } from "@drawbackengine/chess-core";
 import type {
+  ChessMove,
   DrawbackLoss,
   DrawbackRule,
 } from "@drawbackengine/drawback-engine";
-import { unrestrictedRule } from "@drawbackengine/drawback-engine";
+import {
+  checkersRule,
+  lameDuckRule,
+  unrestrictedRule,
+} from "@drawbackengine/drawback-engine";
 import { Mulberry32 } from "@drawbackengine/shared";
 import { drawbackMaterialEvaluator } from "./material-evaluator.js";
 import {
@@ -40,6 +45,30 @@ const delayedLossRule: DrawbackRule<
         }
       : null,
 };
+
+const POISONED_ROOK_FEN =
+  "4k3/3r4/8/8/8/8/8/3QK3 w - - 0 1";
+const HORIZON_REGRESSION_LIMITS = { depth: 1, maxNodes: 20_000 } as const;
+
+function onlyMoveRule(
+  id: string,
+  from: string,
+  to: string,
+): DrawbackRule<Record<string, never>, Record<string, never>> {
+  return {
+    id,
+    name: "Only move",
+    description: `Only ${from}-${to} is legal.`,
+    verification: "verified",
+    supportedAuthorities: ["capturable-king/v1"],
+    generateParameters: () => ({}),
+    initialize: () => ({}),
+    filterLegalMoves: (_context, moves) =>
+      moves.filter((move) => move.from === from && move.to === to),
+    applyMove: () => ({}),
+    checkStartOfTurnLoss: () => null,
+  };
+}
 
 describe("searchOmniscientDrawbackMove", () => {
   it("treats literal king capture as the decisive terminal move", async () => {
@@ -81,6 +110,184 @@ describe("searchOmniscientDrawbackMove", () => {
     expect(result.move).not.toMatchObject({ from: "h1", to: "h3" });
     expect(session.history()).toHaveLength(0);
     expect(session.result).toEqual({ kind: "active" });
+  });
+
+  it("extends a depth-one horizon through an immediate legal recapture", async () => {
+    const session = DrawbackGameSession.create(
+      { white: unrestrictedRule, black: unrestrictedRule },
+      new Mulberry32(91),
+      POISONED_ROOK_FEN,
+    );
+    const poisonedCapture = session.legalMoves().find(
+      (move) => move.from === "d1" && move.to === "d7",
+    );
+    if (poisonedCapture === undefined) {
+      throw new Error("Expected Qxd7 to be authority-legal.");
+    }
+
+    const poisoned = await searchOmniscientDrawbackRootMove(
+      session,
+      poisonedCapture,
+      drawbackMaterialEvaluator,
+      HORIZON_REGRESSION_LIMITS,
+    );
+    expect(poisoned).toMatchObject({
+      score: 0,
+      truncated: false,
+    });
+    expect(poisoned.principalVariation).toEqual([
+      poisonedCapture,
+      expect.objectContaining({
+        from: "e8",
+        to: "d7",
+        captured: "queen",
+      }),
+    ]);
+
+    const selected = await searchOmniscientDrawbackMove(
+      session,
+      drawbackMaterialEvaluator,
+      HORIZON_REGRESSION_LIMITS,
+    );
+    expect(selected.move).toMatchObject({ from: "d1", to: "a1" });
+    expect(selected.score).toBe(400);
+  });
+
+  it("keeps the capture when the opponent drawback forbids its recapture", async () => {
+    const session = DrawbackGameSession.create(
+      { white: unrestrictedRule, black: lameDuckRule },
+      new Mulberry32(91),
+      POISONED_ROOK_FEN,
+    );
+
+    const selected = await searchOmniscientDrawbackMove(
+      session,
+      drawbackMaterialEvaluator,
+      HORIZON_REGRESSION_LIMITS,
+    );
+
+    expect(selected.move).toMatchObject({
+      from: "d1",
+      to: "d7",
+      captured: "rook",
+    });
+    expect(selected.score).toBeGreaterThan(900_000);
+  });
+
+  it("advances castling king-passant before a depth-boundary leaf", async () => {
+    const session = DrawbackGameSession.create(
+      {
+        white: unrestrictedRule,
+        black: onlyMoveRule("test-decline-king-passant", "f8", "f7"),
+      },
+      new Mulberry32(93),
+      "5r1k/8/8/8/8/8/8/4K2R w K - 0 1",
+    );
+    const castle = session.legalMoves().find(
+      (move) => move.from === "e1" && move.to === "g1",
+    );
+    if (castle === undefined) {
+      throw new Error("Expected white king-side castling to be legal.");
+    }
+    const evaluatedLeaves: Array<{
+      readonly kingPassantActive: boolean;
+      readonly history: readonly ChessMove[];
+    }> = [];
+
+    const result = await searchOmniscientDrawbackRootMove(
+      session,
+      castle,
+      {
+        id: "test-reject-active-king-passant/v1",
+        evaluate(leaf) {
+          if (leaf.kingPassantActive) {
+            throw new Error(
+              "Static evaluator cannot represent active king-passant.",
+            );
+          }
+          evaluatedLeaves.push({
+            kingPassantActive: leaf.kingPassantActive,
+            history: structuredClone(leaf.history),
+          });
+          return Promise.resolve(37);
+        },
+      },
+      { depth: 1, maxNodes: 100 },
+    );
+
+    expect(result).toMatchObject({
+      score: 37,
+      nodes: 3,
+      leaves: 1,
+      truncated: false,
+    });
+    expect(result.principalVariation.slice(0, 2)).toMatchObject([
+      { from: "e1", to: "g1" },
+      { from: "f8", to: "f7" },
+    ]);
+    expect(result.principalVariation[0]?.flags).toContain("castle");
+    expect(evaluatedLeaves).toEqual([{
+      kingPassantActive: false,
+      history: [
+        expect.objectContaining({ from: "e1", to: "g1" }),
+        expect.objectContaining({ from: "f8", to: "f7" }),
+      ],
+    }]);
+  });
+
+  it("uses a conservative forced-capture bound at the hard node cap", async () => {
+    const searchRoot = async (maxNodes: number) => {
+      const session = DrawbackGameSession.create(
+        { white: unrestrictedRule, black: checkersRule },
+        new Mulberry32(91),
+        POISONED_ROOK_FEN,
+      );
+      const root = session.legalMoves().find(
+        (move) => move.from === "d1" && move.to === "d7",
+      );
+      if (root === undefined) {
+        throw new Error("Expected Qxd7 to be authority-legal.");
+      }
+      return {
+        root,
+        result: await searchOmniscientDrawbackRootMove(
+          session,
+          root,
+          drawbackMaterialEvaluator,
+          { depth: 1, maxNodes },
+        ),
+      };
+    };
+
+    const bounded = await searchRoot(2);
+    expect(bounded.result).toMatchObject({
+      score: -999_998,
+      nodes: 2,
+      truncated: true,
+    });
+    expect(bounded.result.principalVariation).toEqual([
+      bounded.root,
+      expect.objectContaining({
+        from: "e8",
+        to: "d7",
+        captured: "queen",
+      }),
+    ]);
+
+    const exact = await searchRoot(3);
+    expect(exact.result).toMatchObject({
+      score: 0,
+      nodes: 3,
+      truncated: false,
+    });
+    expect(exact.result.principalVariation).toEqual([
+      exact.root,
+      expect.objectContaining({
+        from: "e8",
+        to: "d7",
+        captured: "queen",
+      }),
+    ]);
   });
 
   it("is deterministic and leaves the searched session untouched", async () => {

@@ -11,13 +11,18 @@
     "node": ">=22"
   },
   "scripts": {
+    "prebuild": "node ../../scripts/clean-owned-build-output.mjs",
     "build": "tsc -p tsconfig.build.json",
+    "postbuild": "node ../../scripts/normalize-built-artifacts.mjs --package",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "batch": "tsx src/batch-cli.ts",
     "demo": "tsx src/cli.ts",
     "oracle:move": "tsx src/drawback-engine-cli.ts",
     "parallel": "tsx src/parallel-cli.ts",
+    "play": "tsx src/play-entry.ts",
     "player-private:batch": "tsx src/player-private-batch-cli.ts",
+    "player-private:schema9": "pnpm --workspace-root build && node dist/schema9-player-private-cli.js",
+    "player-private:strength": "tsx src/player-private-strength-cli.ts",
     "pgn:evaluator-sidecar": "tsx src/pgn-evaluator-sidecar-cli.ts",
     "start": "tsx src/cli.ts"
   },

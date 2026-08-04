@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertParallelWorkerRequest,
+  assertParallelWorkerResponse,
   simulateBatchParallel,
   simulateCatalogBatchParallel,
 } from "./parallel.js";
@@ -59,8 +60,8 @@ describe("parallel simulation", () => {
     ).rejects.toThrow(RangeError);
   });
 
-  it("validates tagged worker protocol versions and assignments", () => {
-    const valid = {
+  it("rejects prepared evaluator configuration at the worker boundary", () => {
+    const privatePreparedRequest = {
       schemaVersion: 3,
       kind: "prepared-catalog-assignments",
       assignedGames: [{
@@ -77,35 +78,35 @@ describe("parallel simulation", () => {
       maxPlies: 2,
     };
     expect(() => {
-      assertParallelWorkerRequest(valid);
+      assertParallelWorkerRequest(privatePreparedRequest);
+    }).toThrow("parent-owned");
+
+    const ordinaryRequest = {
+      batchSeed: 1,
+      gameIndexes: [0],
+      spec,
+    };
+    expect(() => {
+      assertParallelWorkerRequest(ordinaryRequest);
     }).not.toThrow();
     expect(() => {
-      assertParallelWorkerRequest({ ...valid, schemaVersion: 2 });
-    }).toThrow("schema/kind");
-    expect(() => {
       assertParallelWorkerRequest({
-        ...valid,
-        assignedGames: [{
-          ...valid.assignedGames[0],
-          assignment: {
-            ...valid.assignedGames[0]?.assignment,
-            whiteRuleId: "unknown",
-          },
-        }],
+        ...ordinaryRequest,
+        evaluator: { process: { executablePath: "private" } },
       });
-    }).toThrow("prepared catalog");
-    expect(() => {
-      assertParallelWorkerRequest({
-        ...valid,
-        assignedGames: [
-          valid.assignedGames[0],
-          valid.assignedGames[0],
-        ],
-      });
-    }).toThrow("indexes");
-    expect(() => {
-      assertParallelWorkerRequest({ ...valid, extra: true });
     }).toThrow("invalid fields");
+  });
+
+  it("rejects malformed worker responses as permanent protocol errors", () => {
+    expect(() => {
+      assertParallelWorkerResponse({ games: [] });
+    }).not.toThrow();
+    expect(() => {
+      assertParallelWorkerResponse({ games: [], extra: true });
+    }).toThrow("invalid fields");
+    expect(() => {
+      assertParallelWorkerResponse({ games: "forged" });
+    }).toThrow("must be an array");
   });
 
   it(

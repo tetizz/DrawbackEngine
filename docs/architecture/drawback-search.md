@@ -153,7 +153,12 @@ The `oracle:move` CLI requires an explicit engine executable path and expected
 SHA-256 digest, verifies the binary before launch, and prints an offline-oracle
 warning before its result. `--engine-kind fairy-stockfish` additionally
 requires the authenticated `--variant-path`; ordinary Stockfish remains
-available for orthodox-compatible leaves.
+available for orthodox-compatible leaves. This demonstration command reads
+and verifies the source executable before launching that same path; it does not
+provide the private staging, pinned option-surface authentication, or retained
+cleanup contract of the player-private UCI worker path. It therefore requires a
+trusted immutable executable location and is outside the authenticated worker
+lifecycle guarantee.
 
 ## Player-private self-play
 

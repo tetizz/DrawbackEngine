@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createConstraintCacheRecord,
+  deriveUciEvaluationContextDigest,
   validateCompletedPgnEvaluatorSidecar,
   type NodeUciTurnConstraintProviderConfig,
 } from "@drawbackengine/chess-evaluator";
@@ -14,15 +15,37 @@ import {
 
 const OPTIONS_DIGEST = "12".repeat(32);
 const EXECUTABLE_DIGEST = "34".repeat(32);
+const RUNTIME_CONTEXT_DIGEST = "34".repeat(32);
+const ADVERTISED_OPTIONS_DIGEST = "56".repeat(32);
+const STOCKFISH_OPTIONS = [
+  { name: "Threads", value: 1 },
+  { name: "Hash", value: 16 },
+  { name: "Ponder", value: false },
+  { name: "MultiPV", value: 1 },
+  { name: "UCI_Chess960", value: false },
+  { name: "UCI_LimitStrength", value: false },
+  { name: "Skill Level", value: 20 },
+  { name: "SyzygyPath", value: "<empty>" },
+  { name: "Clear Hash" },
+] as const;
+const EVALUATION_CONTEXT_DIGEST = deriveUciEvaluationContextDigest({
+  optionsDigest: OPTIONS_DIGEST,
+  runtimeContextSha256: RUNTIME_CONTEXT_DIGEST,
+  executableSha256: EXECUTABLE_DIGEST,
+  configuredOptions: STOCKFISH_OPTIONS,
+  advertisedOptionsSha256: ADVERTISED_OPTIONS_DIGEST,
+});
 const PUBLIC_FINGERPRINT =
-  `stockfish:17.1:${EXECUTABLE_DIGEST}:${OPTIONS_DIGEST}`;
+  `stockfish:17.1:${EXECUTABLE_DIGEST}:${EVALUATION_CONTEXT_DIGEST}`;
 
 function evaluator(): NodeUciTurnConstraintProviderConfig {
   return {
     process: {
       executablePath: "unused-in-unit-test",
       executableSha256: EXECUTABLE_DIGEST,
+      runtimeContextSha256: RUNTIME_CONTEXT_DIGEST,
     },
+    client: { options: STOCKFISH_OPTIONS },
     policy: {
       identity: { id: "stockfish-bestmove-v1", version: 1 },
       engineIdentity: {
@@ -30,6 +53,7 @@ function evaluator(): NodeUciTurnConstraintProviderConfig {
         engine: "stockfish",
         version: "17.1",
       },
+      advertisedOptionsSha256: ADVERTISED_OPTIONS_DIGEST,
       optionsDigest: OPTIONS_DIGEST,
       limit: { nodes: 10_000 },
     },
@@ -47,7 +71,7 @@ class RecordingProvider implements ExternalTurnConstraintProvider {
         fingerprint: {
           engine: "stockfish",
           version: "17.1",
-          optionsDigest: OPTIONS_DIGEST,
+          optionsDigest: EVALUATION_CONTEXT_DIGEST,
         },
         fen: request.fen,
         rootMoves: request.ordinaryRootMoves,
@@ -74,6 +98,20 @@ class RecordingProvider implements ExternalTurnConstraintProvider {
 }
 
 describe("completed-PGN evaluator sidecar generation", () => {
+  it("rejects a pre-aborted replay before requesting evaluator facts", async () => {
+    const provider = new RecordingProvider();
+    const controller = new AbortController();
+    controller.abort(new Error("Synthetic sidecar interruption."));
+
+    await expect(generateCompletedPgnEvaluatorSidecarFromTrustedProvider({
+      pgn: '[Result "1-0"]\n\n1. e4 1-0',
+      evaluator: evaluator(),
+      provider,
+      signal: controller.signal,
+    })).rejects.toThrow("Synthetic sidecar interruption");
+    expect(provider.requests).toHaveLength(0);
+  });
+
   it("resolves and authenticates exactly one evaluator fact per replay ply", async () => {
     const pgn = '[Result "1-0"]\n\n1. e4 e5 2. Nf3 1-0';
     const provider = new RecordingProvider();

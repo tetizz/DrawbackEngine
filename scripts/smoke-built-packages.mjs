@@ -24,4 +24,6 @@ for (const [relativePath, expectedExport] of packageChecks) {
 }
 
 await access(join(repositoryRoot, "apps", "engine-cli", "dist", "cli.js"));
+await access(join(repositoryRoot, "apps", "play-web", "dist", "server", "server", "entry.js"));
+await access(join(repositoryRoot, "apps", "play-web", "dist", "client", "index.html"));
 console.log("Built package smoke test passed.");

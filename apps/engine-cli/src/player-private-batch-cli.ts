@@ -1,17 +1,22 @@
 import { availableParallelism } from "node:os";
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
-  createPlayerPrivateAssignmentSchedule,
   PLAYER_PRIVATE_DATA_SPLITS,
-  resolvePlayerPrivateTrainingProfile,
-  streamPlayerPrivateAssignmentsParallel,
   type PlayerPrivateDataSplit,
-  type ScheduledPlayerPrivateAssignment,
+  type PlayerPrivateEvaluatorPolicy,
 } from "@drawbackengine/simulation-arena";
+import { runPlayerPrivateBatch } from "./player-private-batch.js";
 import {
-  writePlayerPrivateSplitTraceFileAtomic,
-} from "./player-private-output.js";
+  loadPlayerPrivateEvaluatorPolicy,
+} from "./player-private-evaluator-config.js";
+import { formatPublicFailureMessage } from "./failure-redaction.js";
+import { retryRetainedCleanup } from "./retained-cleanup.js";
+import {
+  findCleanupTerminationError,
+  installTerminationSignal,
+} from "./termination-signal.js";
+
+const termination = installTerminationSignal();
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2).filter((argument) => argument !== "--");
@@ -41,73 +46,75 @@ async function main(): Promise<void> {
   const maxDepth = positiveInteger(args[11], 2);
   const maxNodes = positiveInteger(args[12], 50_000);
   const temperatureCp = positiveNumber(args[13], 35);
-  const profile = resolvePlayerPrivateTrainingProfile(
-    args[14] ?? "standard",
+  const profileId = args[14] ?? "standard";
+  const evaluator = await evaluatorPolicy(
+    args[15] ?? "material",
+    args[16],
+    invocationDirectory,
   );
-  const schedule = selectedSplit(
-    createPlayerPrivateAssignmentSchedule({
-      splitCounts,
-      labelSeed,
-      gameplaySeed,
-      parameterSeed,
-      ...(profile.ruleIds === undefined
-        ? {}
-        : { ruleIds: profile.ruleIds }),
-      ...(profile.scenarios === undefined
-        ? {}
-        : {
-            initialFens: profile.scenarios.map(({ fen }) => fen),
-          }),
-    }),
+  const written = await runPlayerPrivateBatch({
     split,
-  );
-  const games = streamPlayerPrivateAssignmentsParallel({
-    assignments: schedule,
+    splitCounts,
     workers,
-    windowSize,
+    labelSeed,
+    gameplaySeed,
+    parameterSeed,
+    outputPath,
     maxPlies,
-    policy: {
-      policyId: profile.policyId,
-      maxDepth,
-      maxNodes,
-      temperatureCp,
-      topK: 8,
-      leafCacheEntries: 16_384,
-      leafCacheHistoryMode: "full",
-      opponentAggregation:
-        profile.opponentAggregation ?? "worst-case",
-      evaluator: { kind: "material", version: 1 },
-      opponentHypotheses: {
-        ...(profile.opponentHypotheses ?? {
-          kind: "unrestricted-baseline",
-          version: 1,
-        }),
-      },
+    windowSize,
+    maxDepth,
+    maxNodes,
+    temperatureCp,
+    profileId,
+    evaluator,
+    signal: termination.signal,
+    onProgress: ({ games: recordsWritten, bytes: bytesWritten }) => {
+      console.log(JSON.stringify({
+        kind: "player-private-progress",
+        recordsWritten,
+        totalGames: splitCounts[split],
+        bytesWritten,
+      }));
     },
   });
-  mkdirSync(dirname(outputPath), { recursive: true });
-  const written = await writePlayerPrivateSplitTraceFileAtomic(
-    outputPath,
+  console.log(JSON.stringify({
+    kind: "player-private-complete",
     split,
-    games,
-  );
-  console.log(
-    `Wrote ${String(written.games)} ${split} player-private traces `
-      + `(${String(written.bytes)} bytes, sha256 ${written.sha256}) `
-      + `for global indexes ${String(written.firstGameIndex)}-`
-      + `${String(written.lastGameIndex)} to ${outputPath}`,
-  );
+    games: written.games,
+    bytes: written.bytes,
+    sha256: written.sha256,
+    firstGameIndex: written.firstGameIndex,
+    lastGameIndex: written.lastGameIndex,
+    evaluatorId: written.evaluatorId,
+  }));
 }
 
-function* selectedSplit(
-  schedule: Iterable<ScheduledPlayerPrivateAssignment>,
-  split: PlayerPrivateDataSplit,
-): Generator<ScheduledPlayerPrivateAssignment> {
-  for (const assignment of schedule) {
-    if (assignment.split === split) {
-      yield assignment;
+async function evaluatorPolicy(
+  mode: string,
+  configPath: string | undefined,
+  invocationDirectory: string,
+): Promise<PlayerPrivateEvaluatorPolicy> {
+  if (mode === "material") {
+    if (configPath !== undefined) {
+      throw new RangeError(
+        "Material evaluator mode does not accept a configuration file.",
+      );
     }
+    return { kind: "material", version: 1 };
   }
+  if (mode !== "node-uci-leaf") {
+    throw new RangeError(
+      "Evaluator mode must be material or node-uci-leaf.",
+    );
+  }
+  if (configPath === undefined) {
+    throw new RangeError(
+      "node-uci-leaf mode requires a private evaluator configuration.",
+    );
+  }
+  return loadPlayerPrivateEvaluatorPolicy(
+    resolve(invocationDirectory, configPath),
+  );
 }
 
 function dataSplit(value: string): PlayerPrivateDataSplit {
@@ -169,9 +176,21 @@ function unsignedSeed(
   return parsed;
 }
 
-void main().catch((error: unknown) => {
-  const message =
-    error instanceof Error ? error.message : "Unknown player-private error.";
-  console.error(`Player-private batch failed: ${message}`);
-  process.exitCode = 1;
+void main().catch(async (error: unknown) => {
+  const reported = await retryRetainedPoolCleanup(error);
+  const message = formatPublicFailureMessage(
+    reported,
+    "Unknown player-private error.",
+  );
+  console.error(JSON.stringify({
+    kind: "player-private-failure",
+    message,
+  }));
+  process.exitCode = findCleanupTerminationError(reported)?.exitCode ?? 1;
+}).finally(() => {
+  termination.dispose();
 });
+
+async function retryRetainedPoolCleanup(error: unknown): Promise<unknown> {
+  return retryRetainedCleanup(error, 2);
+}

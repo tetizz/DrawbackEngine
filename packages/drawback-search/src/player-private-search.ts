@@ -760,7 +760,338 @@ function opponentBranches(
   });
 }
 
+/**
+ * Extends one optional horizon ply through exact captures, then follows
+ * mandatory capture-only continuations. Posterior modes retain each world's
+ * legal mask, so one world's quiet reply cannot stand in for another world's
+ * forced capture.
+ */
 async function evaluateLeaf(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  suppliedExpansion?: TurnExpansion,
+  extendOptionalCaptures = true,
+): Promise<NodeResult> {
+  const expansion =
+    suppliedExpansion === undefined
+      ? expandTurn(node, state.rootColor, ply)
+      : suppliedExpansion;
+  if (expansion.terminalScore !== null) {
+    return { score: expansion.terminalScore, principalVariation: [] };
+  }
+  if (node.position.snapshot().kingPassant !== null) {
+    return evaluateKingPassantExtension(node, ply, state, expansion);
+  }
+  const captures = orderedMoves(
+    expansion.moves.filter((move) => move.captured !== undefined),
+  );
+  if (
+    node.position.turn !== state.rootColor
+    && state.aggregation !== "worst-case"
+  ) {
+    if (captures.length === 0) {
+      return evaluatePosteriorOpponentLeaf(
+        node,
+        ply,
+        state,
+        expansion,
+      );
+    }
+    const forcedCaptures = forcedOpponentCaptures(expansion);
+    if (!extendOptionalCaptures && forcedCaptures.length === 0) {
+      return evaluatePosteriorOpponentLeaf(
+        node,
+        ply,
+        state,
+        expansion,
+      );
+    }
+    if (state.nodes + captures.length > state.limits.maxNodes) {
+      state.truncated = true;
+      return evaluatePosteriorOpponentBudgetFallback(
+        node,
+        ply,
+        state,
+        expansion,
+      );
+    }
+    return evaluatePosteriorOpponentCaptureExtension(
+      node,
+      ply,
+      state,
+      expansion,
+      captures,
+    );
+  }
+  const baseline = await evaluateLeafBaseline(node, ply, state, expansion);
+  if (
+    captures.length === 0
+    || captures.some((move) => move.captured === "king")
+  ) {
+    return baseline;
+  }
+  const ownTurn = node.position.turn === state.rootColor;
+  const forcedCaptures = ownTurn ? [] : forcedOpponentCaptures(expansion);
+  const quietMoveAvailable = expansion.moves.some(
+    (move) => move.captured === undefined,
+  );
+  if (
+    !extendOptionalCaptures
+    && quietMoveAvailable
+    && forcedCaptures.length === 0
+  ) {
+    return baseline;
+  }
+  if (state.nodes + captures.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return forcedCaptures.length > 0
+      ? conservativeForcedCaptureResult(forcedCaptures, ply)
+      : quietMoveAvailable
+        ? baseline
+        : conservativeForcedCaptureResult(captures, ply);
+  }
+
+  const branches = ownTurn
+    ? captures.map((move) => ({ move, node: applyOwnMove(node, move) }))
+    : opponentBranches(node, captures);
+  let selected: NodeResult | null = quietMoveAvailable ? baseline : null;
+  for (const branch of branches) {
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return forcedCaptures.length > 0
+        ? conservativeForcedCaptureResult(forcedCaptures, ply)
+        : quietMoveAvailable
+          ? baseline
+          : conservativeForcedCaptureResult(captures, ply);
+    }
+    state.nodes += 1;
+    const child = await evaluateLeaf(
+      branch.node,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    const candidate: NodeResult = {
+      score: child.score,
+      principalVariation: [branch.move, ...child.principalVariation],
+    };
+    if (
+      selected === null
+      || improvesTacticalResult(candidate, selected, ownTurn)
+    ) {
+      selected = candidate;
+    }
+  }
+  if (selected === null) {
+    throw new Error("Capture extension produced no selectable continuation.");
+  }
+  return selected;
+}
+
+/**
+ * Consumes the authority's one-reply castling king-passant state before a
+ * static evaluator is called. The FEN cannot encode this right, so every live
+ * hidden-rule world must advance through one of its exact legal replies. A
+ * reply that castles can arm the opposite one-reply right; the recursive leaf
+ * call consumes that right in the same way.
+ */
+async function evaluateKingPassantExtension(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+): Promise<NodeResult> {
+  throwIfAborted(state.limits.signal);
+  const moves = orderedMoves(expansion.moves);
+  if (state.nodes + moves.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return kingPassantBudgetFallback(node, ply, state, expansion);
+  }
+
+  const ownTurn = node.position.turn === state.rootColor;
+  if (!ownTurn && state.aggregation !== "worst-case") {
+    return evaluatePosteriorKingPassantExtension(
+      node,
+      ply,
+      state,
+      expansion,
+      moves,
+    );
+  }
+
+  const branches = ownTurn
+    ? moves.map((move) => ({ move, node: applyOwnMove(node, move) }))
+    : opponentBranches(node, moves);
+  let selected: NodeResult | null = null;
+  for (const branch of branches) {
+    throwIfAborted(state.limits.signal);
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return kingPassantBudgetFallback(node, ply, state, expansion);
+    }
+    state.nodes += 1;
+    const child = await evaluateLeaf(
+      branch.node,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    if (state.truncated) {
+      return kingPassantBudgetFallback(node, ply, state, expansion);
+    }
+    const candidate: NodeResult = {
+      score: child.score,
+      principalVariation: [branch.move, ...child.principalVariation],
+    };
+    if (
+      selected === null
+      || improvesTacticalResult(candidate, selected, ownTurn)
+    ) {
+      selected = candidate;
+    }
+  }
+  if (selected === null) {
+    throw new Error("King-passant extension produced no legal continuation.");
+  }
+  return selected;
+}
+
+async function evaluatePosteriorKingPassantExtension(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+  moves: readonly ChessMove[],
+): Promise<NodeResult> {
+  const evaluated = new Map<string, EvaluatedMoveBranch>();
+  for (const branch of opponentBranches(node, moves)) {
+    throwIfAborted(state.limits.signal);
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return kingPassantBudgetFallback(node, ply, state, expansion);
+    }
+    state.nodes += 1;
+    const result = await evaluateLeaf(
+      branch.node,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    if (state.truncated) {
+      return kingPassantBudgetFallback(node, ply, state, expansion);
+    }
+    evaluated.set(moveId(branch.move), { branch, result });
+  }
+
+  const outcomes: WorldScoreOutcome[] = [];
+  for (const world of requiredOpponentWorlds(expansion)) {
+    if (world.terminalScore !== null) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
+      continue;
+    }
+    const selected = minimumWorldReply(world, evaluated);
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: selected.result.score,
+      replyId: moveId(selected.branch.move),
+    });
+  }
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const representative = representativePosteriorReply(
+    aggregation.representativeMass,
+    evaluated,
+  );
+  return {
+    score: aggregation.score,
+    principalVariation:
+      representative === null
+        ? []
+        : [
+            representative.branch.move,
+            ...representative.result.principalVariation,
+          ],
+  };
+}
+
+/**
+ * A truncated king-passant node cannot stand pat because its ephemeral right
+ * is absent from FEN. Use a deterministic root-loss bound and a legal reply
+ * instead of consulting an evaluator with incomplete authority state.
+ */
+function kingPassantBudgetFallback(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+): NodeResult {
+  const movesById = new Map(
+    expansion.moves.map((move) => [moveId(move), move] as const),
+  );
+  if (
+    node.position.turn === state.rootColor
+    || state.aggregation === "worst-case"
+  ) {
+    const move = orderedMoves(expansion.moves)[0];
+    if (move === undefined) {
+      throw new Error("King-passant fallback requires a legal reply.");
+    }
+    return {
+      score: -TERMINAL_SCORE + ply + 1,
+      principalVariation: [move],
+    };
+  }
+
+  const outcomes: WorldScoreOutcome[] = [];
+  for (const world of requiredOpponentWorlds(expansion)) {
+    if (world.terminalScore !== null) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
+      continue;
+    }
+    const replyId = [...world.legalMoveIds].sort()[0];
+    if (replyId === undefined || !movesById.has(replyId)) {
+      throw new Error(
+        `${world.hypothesisId} has no legal king-passant fallback reply.`,
+      );
+    }
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: -TERMINAL_SCORE + ply + 1,
+      replyId,
+    });
+  }
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const selectedId = [...aggregation.representativeMass.entries()].sort(
+    ([leftId, leftMass], [rightId, rightMass]) =>
+      rightMass - leftMass || leftId.localeCompare(rightId),
+  )[0]?.[0];
+  const selectedMove =
+    selectedId === undefined ? undefined : movesById.get(selectedId);
+  if (selectedId !== undefined && selectedMove === undefined) {
+    throw new Error(`King-passant fallback reply ${selectedId} is missing.`);
+  }
+  return {
+    score: aggregation.score,
+    principalVariation: selectedMove === undefined ? [] : [selectedMove],
+  };
+}
+
+async function evaluateLeafBaseline(
   node: PrivateNode,
   ply: number,
   state: SearchState,
@@ -800,6 +1131,289 @@ async function evaluateLeaf(
     score: await evaluateStaticLeaf(node, state, expansion.moves),
     principalVariation: [],
   };
+}
+
+/**
+ * Extends a posterior opponent horizon through every distinct legal capture.
+ * Each hidden-rule world may still stand pat only when it has a quiet legal
+ * reply; forced-capture worlds must select one of their exact capture branches.
+ */
+async function evaluatePosteriorOpponentCaptureExtension(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+  captures: readonly ChessMove[],
+): Promise<NodeResult> {
+  const evaluated = new Map<string, EvaluatedMoveBranch>();
+  for (const branch of opponentBranches(node, captures)) {
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return evaluatePosteriorOpponentBudgetFallback(
+        node,
+        ply,
+        state,
+        expansion,
+      );
+    }
+    state.nodes += 1;
+    const result = await evaluateLeaf(
+      branch.node,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    if (state.truncated) {
+      return evaluatePosteriorOpponentBudgetFallback(
+        node,
+        ply,
+        state,
+        expansion,
+      );
+    }
+    evaluated.set(moveId(branch.move), { branch, result });
+  }
+
+  const movesById = new Map(
+    expansion.moves.map((move) => [moveId(move), move] as const),
+  );
+  const staticScores = new Map<string, number>();
+  const outcomes: WorldScoreOutcome[] = [];
+  for (const world of requiredOpponentWorlds(expansion)) {
+    if (world.terminalScore !== null) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
+      continue;
+    }
+    const legalMoveIds = [...world.legalMoveIds].sort();
+    const captureIds = legalMoveIds.filter(
+      (id) => movesById.get(id)?.captured !== undefined,
+    );
+    const quietMoveAvailable = legalMoveIds.some(
+      (id) => movesById.get(id)?.captured === undefined,
+    );
+    let selected: { readonly score: number; readonly replyId: string | null }
+      | null = null;
+    if (quietMoveAvailable || captureIds.length === 0) {
+      const maskId = legalMoveIds.join(",");
+      let staticScore = staticScores.get(maskId);
+      if (staticScore === undefined) {
+        staticScore = await evaluateStaticLeaf(
+          node,
+          state,
+          movesForWorld(world, movesById),
+        );
+        staticScores.set(maskId, staticScore);
+      }
+      selected = { score: staticScore, replyId: null };
+    }
+    for (const id of captureIds) {
+      const candidate = evaluated.get(id);
+      if (candidate === undefined) {
+        throw new Error(
+          `${world.hypothesisId} permits missing capture branch ${id}.`,
+        );
+      }
+      if (
+        selected === null
+        || candidate.result.score < selected.score
+        || (
+          candidate.result.score === selected.score
+          && selected.replyId !== null
+          && id.localeCompare(selected.replyId) < 0
+        )
+      ) {
+        selected = { score: candidate.result.score, replyId: id };
+      }
+    }
+    if (selected === null) {
+      throw new Error(
+        `${world.hypothesisId} has no tactical leaf continuation.`,
+      );
+    }
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: selected.score,
+      replyId: selected.replyId,
+    });
+  }
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const representative = representativePosteriorReply(
+    aggregation.representativeMass,
+    evaluated,
+  );
+  return {
+    score: aggregation.score,
+    principalVariation:
+      representative === null
+        ? []
+        : [
+            representative.branch.move,
+            ...representative.result.principalVariation,
+          ],
+  };
+}
+
+/**
+ * Produces a fail-closed posterior score when the hard node cap prevents an
+ * exact capture child. Worlds with a quiet legal reply may retain their static
+ * leaf; forced-capture worlds receive a root-loss bound and a legal reply PV.
+ * No uncharged child position is evaluated.
+ */
+async function evaluatePosteriorOpponentBudgetFallback(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+): Promise<NodeResult> {
+  const movesById = new Map(
+    expansion.moves.map((move) => [moveId(move), move] as const),
+  );
+  const staticScores = new Map<string, number>();
+  const outcomes: WorldScoreOutcome[] = [];
+  for (const world of requiredOpponentWorlds(expansion)) {
+    if (world.terminalScore !== null) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
+      continue;
+    }
+    const moves = movesForWorld(world, movesById);
+    const captures = orderedMoves(
+      moves.filter((move) => move.captured !== undefined),
+    );
+    const kingCapture = captures.find((move) => move.captured === "king");
+    if (kingCapture !== undefined) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: -TERMINAL_SCORE + ply + 1,
+        replyId: moveId(kingCapture),
+      });
+      continue;
+    }
+    const quietMoveAvailable = moves.some(
+      (move) => move.captured === undefined,
+    );
+    if (!quietMoveAvailable && captures.length > 0) {
+      const forced = conservativeForcedCaptureResult(captures, ply);
+      const forcedMove = forced.principalVariation[0];
+      if (forcedMove === undefined) {
+        throw new Error("Forced posterior fallback has no legal reply.");
+      }
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: forced.score,
+        replyId: moveId(forcedMove),
+      });
+      continue;
+    }
+    const maskId = [...world.legalMoveIds].sort().join(",");
+    let staticScore = staticScores.get(maskId);
+    if (staticScore === undefined) {
+      staticScore = await evaluateStaticLeaf(node, state, moves);
+      staticScores.set(maskId, staticScore);
+    }
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: staticScore,
+      replyId: null,
+    });
+  }
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const selectedId = [...aggregation.representativeMass.entries()].sort(
+    ([leftId, leftMass], [rightId, rightMass]) =>
+      rightMass - leftMass || leftId.localeCompare(rightId),
+  )[0]?.[0];
+  const selectedMove =
+    selectedId === undefined ? undefined : movesById.get(selectedId);
+  if (selectedId !== undefined && selectedMove === undefined) {
+    throw new Error(
+      `Conservative posterior reply ${selectedId} is missing.`,
+    );
+  }
+  return {
+    score: aggregation.score,
+    principalVariation: selectedMove === undefined ? [] : [selectedMove],
+  };
+}
+
+/**
+ * Returns captures that are mandatory in at least one live opponent world.
+ * The result is ordered and de-duplicated so it can also seed a deterministic
+ * conservative PV when the node budget cannot visit those children.
+ */
+function forcedOpponentCaptures(
+  expansion: TurnExpansion,
+): readonly ChessMove[] {
+  const worlds = requiredOpponentWorlds(expansion);
+  const movesById = new Map(
+    expansion.moves.map((move) => [moveId(move), move] as const),
+  );
+  const forced = new Map<string, ChessMove>();
+  for (const world of worlds) {
+    if (world.terminalScore !== null) {
+      continue;
+    }
+    const moves = movesForWorld(world, movesById);
+    const captures = moves.filter((move) => move.captured !== undefined);
+    if (
+      captures.length > 0
+      && captures.length === moves.length
+    ) {
+      for (const move of captures) {
+        forced.set(moveId(move), move);
+      }
+    }
+  }
+  return orderedMoves([...forced.values()]);
+}
+
+/**
+ * A truncated forced-capture leaf cannot use an illegal static stand-pat.
+ * This deterministic root-loss bound preserves a legal PV without evaluating
+ * an uncharged child; `truncated` records that the score is conservative.
+ */
+function conservativeForcedCaptureResult(
+  captures: readonly ChessMove[],
+  ply: number,
+): NodeResult {
+  const forcedMove = captures[0];
+  if (forcedMove === undefined) {
+    throw new Error("Forced-capture fallback requires a legal capture.");
+  }
+  return {
+    score: -TERMINAL_SCORE + ply + 1,
+    principalVariation: [forcedMove],
+  };
+}
+
+function improvesTacticalResult(
+  candidate: NodeResult,
+  selected: NodeResult,
+  maximizing: boolean,
+): boolean {
+  if (candidate.score !== selected.score) {
+    return maximizing
+      ? candidate.score > selected.score
+      : candidate.score < selected.score;
+  }
+  const candidateMove = candidate.principalVariation[0];
+  const selectedMove = selected.principalVariation[0];
+  return candidateMove !== undefined
+    && selectedMove !== undefined
+    && moveId(candidateMove).localeCompare(moveId(selectedMove)) < 0;
 }
 
 async function evaluatePosteriorOpponentLeaf(
