@@ -28,6 +28,7 @@ import {
   computeSchema9ProducerRuntimeIdentity,
   ownedRuntimeDirectoryIdentity,
   removeOwnedRuntimeDirectory,
+  runSchema9AuthenticatedGit,
   runSchema9RuntimeCommandForTesting,
   schema9SanitizedChildEnvironmentForTesting,
   schema9RuntimeDescriptor,
@@ -446,6 +447,220 @@ describe("schema-9 producer runtime identity", () => {
           process.env["SystemRoot"] = previousSystemRoot;
         }
         bestEffortKillProcess(grandchildPid);
+        await rm(root, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 50,
+        });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "keeps target runtime variables out of the authenticated supervisor",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "schema9-runtime-host-env-"));
+      try {
+        const output = await runSchema9RuntimeCommandForTesting(
+          process.execPath,
+          [
+            "--input-type=module",
+            "--eval",
+            'process.stdout.write(JSON.stringify({ probe: process.env.SCHEMA9_TARGET_PROBE, coreclr: process.env.CORECLR_ENABLE_PROFILING, plus: process.env.COMPlus_ReadyToRun, modules: process.env.PSModulePath }));',
+          ],
+          root,
+          undefined,
+          10_000,
+          {
+            SCHEMA9_TARGET_PROBE: "target-visible",
+            CORECLR_ENABLE_PROFILING: "0",
+            COMPlus_ReadyToRun: "1",
+            PSModulePath: join(root, "hostile-modules"),
+          },
+        );
+        expect(JSON.parse(output)).toEqual({
+          probe: "target-visible",
+          coreclr: "0",
+          plus: "1",
+          modules: join(root, "hostile-modules"),
+        });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it(
+    "rejects a null byte instead of truncating a bounded command argument",
+    async () => {
+      await expect(runSchema9RuntimeCommandForTesting(
+        process.execPath,
+        [`--version\0--must-not-be-truncated`],
+        process.cwd(),
+        undefined,
+        10_000,
+      )).rejects.toThrow("argument 0 contains a null byte");
+    },
+  );
+
+  it(
+    "rejects a null byte before authenticated Git command classification",
+    async () => {
+      await expect(runSchema9AuthenticatedGit(
+        [`status\0--must-not-be-truncated`],
+        process.cwd(),
+      )).rejects.toThrow("contains a null byte");
+    },
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "terminates an ignored-stdio fast-parent descendant before reporting success",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "schema9-runtime-fast-success-"));
+      const parentScript = join(root, "fast-parent.mjs");
+      const pidFile = join(root, "grandchild.pid");
+      let grandchildPid: number | undefined;
+      try {
+        await writeFastParentProcessTreeScript(parentScript, "ignore");
+        const command = runSchema9RuntimeCommandForTesting(
+          process.execPath,
+          [parentScript, pidFile],
+          root,
+          undefined,
+          10_000,
+        );
+        grandchildPid = await waitForPidFile(pidFile);
+        await expect(command).resolves.toBe("");
+        expect(processIsAlive(grandchildPid)).toBe(false);
+      } finally {
+        bestEffortKillProcess(grandchildPid);
+        if (grandchildPid !== undefined) {
+          await expectProcessExit(grandchildPid);
+        }
+        await rm(root, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 50,
+        });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "terminates an inherited-pipe fast-parent descendant before reporting success",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "schema9-runtime-fast-pipe-"));
+      const parentScript = join(root, "fast-parent.mjs");
+      const pidFile = join(root, "grandchild.pid");
+      let grandchildPid: number | undefined;
+      try {
+        await writeFastParentProcessTreeScript(parentScript, "inherit");
+        const command = runSchema9RuntimeCommandForTesting(
+          process.execPath,
+          [parentScript, pidFile],
+          root,
+          undefined,
+          10_000,
+        );
+        grandchildPid = await waitForPidFile(pidFile);
+        await expect(command).resolves.toBe("");
+        expect(processIsAlive(grandchildPid)).toBe(false);
+      } finally {
+        bestEffortKillProcess(grandchildPid);
+        if (grandchildPid !== undefined) {
+          await expectProcessExit(grandchildPid);
+        }
+        await rm(root, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 50,
+        });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "kills a detached descendant after timeout",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "schema9-runtime-fast-timeout-"));
+      const parentScript = join(root, "fast-parent.mjs");
+      const pidFile = join(root, "grandchild.pid");
+      let grandchildPid: number | undefined;
+      try {
+        await writeFastParentProcessTreeScript(parentScript, "ignore", true);
+        const command = runSchema9RuntimeCommandForTesting(
+          process.execPath,
+          [parentScript, pidFile],
+          root,
+          undefined,
+          750,
+        );
+        grandchildPid = await waitForPidFile(pidFile);
+        await expect(command).rejects.toThrow("time limit");
+        await expectProcessExit(grandchildPid);
+      } finally {
+        bestEffortKillProcess(grandchildPid);
+        if (grandchildPid !== undefined) {
+          await expectProcessExit(grandchildPid);
+        }
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "kills an inherited-pipe descendant and empties scratch on cancellation",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "schema9-runtime-fast-cancel-"));
+      const executing = join(root, "executing");
+      const scratch = join(root, "scratch");
+      const parentScript = join(root, "fast-parent.mjs");
+      const pidFile = join(root, "grandchild.pid");
+      const controller = new AbortController();
+      let grandchildPid: number | undefined;
+      try {
+        await createRuntimeFixture(executing, "\n");
+        await mkdir(scratch);
+        await writeFastParentProcessTreeScript(parentScript, "inherit", true);
+        const attestation = attestSchema9ProducerRuntime(
+          executing,
+          COMMIT,
+          controller.signal,
+          {
+            runtime: RUNTIME,
+            temporaryParent: scratch,
+            prepareSnapshot: async (_source, _commit, _snapshot, signal) => {
+              await runSchema9RuntimeCommandForTesting(
+                process.execPath,
+                [parentScript, pidFile],
+                root,
+                signal,
+                30_000,
+              );
+            },
+          },
+        );
+        grandchildPid = await waitForPidFile(pidFile);
+        controller.abort(new Error("fast-parent attestation cancellation"));
+        await expect(attestation).rejects.toThrow(
+          "fast-parent attestation cancellation",
+        );
+        await expectProcessExit(grandchildPid);
+        expect(await readdir(scratch)).toEqual([]);
+      } finally {
+        controller.abort(new Error("test cleanup"));
+        bestEffortKillProcess(grandchildPid);
+        if (grandchildPid !== undefined) {
+          await expectProcessExit(grandchildPid);
+        }
         await rm(root, { recursive: true, force: true });
       }
     },
@@ -476,12 +691,24 @@ describe("schema-9 producer runtime identity", () => {
         () => Promise.reject(new Error("injected tree cleanup failure")),
         () => true,
       );
-      const rejection = expect(command).rejects.toThrow(
-        "tree cleanup failed",
+      const rejection = command.then(
+        () => undefined,
+        (error: unknown) => error,
       );
       grandchildPid = await waitForPidFile(pidFile);
       parentPid = await waitForPidFile(parentPidFile);
-      await rejection;
+      const failure = await rejection;
+      expect(failure).toBeInstanceOf(AggregateError);
+      if (!(failure instanceof AggregateError)) {
+        throw new Error("Expected timeout and cleanup failures to aggregate.");
+      }
+      expect(failure.message).toContain("tree cleanup failed");
+      const failureMessages = (failure.errors as unknown as readonly unknown[])
+        .map((error) => error instanceof Error ? error.message : String(error));
+      expect(failureMessages).toEqual(expect.arrayContaining([
+        expect.stringContaining("time limit"),
+        "injected tree cleanup failure",
+      ]));
       expect(processIsAlive(parentPid)).toBe(true);
       expect(processIsAlive(grandchildPid)).toBe(true);
       await new Promise<void>((accept) => setImmediate(accept));
@@ -824,6 +1051,31 @@ async function writeProcessTreeScript(path: string): Promise<void> {
       'if (child.pid === undefined) throw new Error("missing child pid");',
       'writeFileSync(process.argv[2], String(child.pid), "utf8");',
       'setInterval(() => undefined, 1000);',
+      "",
+    ].join("\n"),
+    { encoding: "utf8", flag: "wx" },
+  );
+}
+
+async function writeFastParentProcessTreeScript(
+  path: string,
+  stdio: "ignore" | "inherit",
+  keepParentAlive = false,
+): Promise<void> {
+  const childProgram = "setInterval(() => undefined, 1000);";
+  const childStdio = stdio === "ignore"
+    ? '"ignore"'
+    : '["ignore", "inherit", "inherit"]';
+  await writeFile(
+    path,
+    [
+      'import { spawn } from "node:child_process";',
+      'import { writeFileSync } from "node:fs";',
+      `const child = spawn(process.execPath, ["--input-type=module", "--eval", ${JSON.stringify(childProgram)}], { detached: true, stdio: ${childStdio} });`,
+      'if (child.pid === undefined) throw new Error("missing child pid");',
+      'writeFileSync(process.argv[2], String(child.pid), "utf8");',
+      "child.unref();",
+      ...(keepParentAlive ? ["setInterval(() => undefined, 1000);"] : []),
       "",
     ].join("\n"),
     { encoding: "utf8", flag: "wx" },
