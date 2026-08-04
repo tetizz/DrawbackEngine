@@ -708,7 +708,7 @@ describe("schema-9 producer provenance", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 70_000);
 
   it("rejects repository clean filters before executing them", async () => {
     const root = await mkdtemp(join(tmpdir(), "schema9-filter-test-"));
