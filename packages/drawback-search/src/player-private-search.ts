@@ -780,6 +780,9 @@ async function evaluateLeaf(
   if (expansion.terminalScore !== null) {
     return { score: expansion.terminalScore, principalVariation: [] };
   }
+  if (node.position.snapshot().kingPassant !== null) {
+    return evaluateKingPassantExtension(node, ply, state, expansion);
+  }
   const captures = orderedMoves(
     expansion.moves.filter((move) => move.captured !== undefined),
   );
@@ -885,6 +888,207 @@ async function evaluateLeaf(
     throw new Error("Capture extension produced no selectable continuation.");
   }
   return selected;
+}
+
+/**
+ * Consumes the authority's one-reply castling king-passant state before a
+ * static evaluator is called. The FEN cannot encode this right, so every live
+ * hidden-rule world must advance through one of its exact legal replies. A
+ * reply that castles can arm the opposite one-reply right; the recursive leaf
+ * call consumes that right in the same way.
+ */
+async function evaluateKingPassantExtension(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+): Promise<NodeResult> {
+  throwIfAborted(state.limits.signal);
+  const moves = orderedMoves(expansion.moves);
+  if (state.nodes + moves.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return kingPassantBudgetFallback(node, ply, state, expansion);
+  }
+
+  const ownTurn = node.position.turn === state.rootColor;
+  if (!ownTurn && state.aggregation !== "worst-case") {
+    return evaluatePosteriorKingPassantExtension(
+      node,
+      ply,
+      state,
+      expansion,
+      moves,
+    );
+  }
+
+  const branches = ownTurn
+    ? moves.map((move) => ({ move, node: applyOwnMove(node, move) }))
+    : opponentBranches(node, moves);
+  let selected: NodeResult | null = null;
+  for (const branch of branches) {
+    throwIfAborted(state.limits.signal);
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return kingPassantBudgetFallback(node, ply, state, expansion);
+    }
+    state.nodes += 1;
+    const child = await evaluateLeaf(
+      branch.node,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    if (state.truncated) {
+      return kingPassantBudgetFallback(node, ply, state, expansion);
+    }
+    const candidate: NodeResult = {
+      score: child.score,
+      principalVariation: [branch.move, ...child.principalVariation],
+    };
+    if (
+      selected === null
+      || improvesTacticalResult(candidate, selected, ownTurn)
+    ) {
+      selected = candidate;
+    }
+  }
+  if (selected === null) {
+    throw new Error("King-passant extension produced no legal continuation.");
+  }
+  return selected;
+}
+
+async function evaluatePosteriorKingPassantExtension(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+  moves: readonly ChessMove[],
+): Promise<NodeResult> {
+  const evaluated = new Map<string, EvaluatedMoveBranch>();
+  for (const branch of opponentBranches(node, moves)) {
+    throwIfAborted(state.limits.signal);
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return kingPassantBudgetFallback(node, ply, state, expansion);
+    }
+    state.nodes += 1;
+    const result = await evaluateLeaf(
+      branch.node,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    if (state.truncated) {
+      return kingPassantBudgetFallback(node, ply, state, expansion);
+    }
+    evaluated.set(moveId(branch.move), { branch, result });
+  }
+
+  const outcomes: WorldScoreOutcome[] = [];
+  for (const world of requiredOpponentWorlds(expansion)) {
+    if (world.terminalScore !== null) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
+      continue;
+    }
+    const selected = minimumWorldReply(world, evaluated);
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: selected.result.score,
+      replyId: moveId(selected.branch.move),
+    });
+  }
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const representative = representativePosteriorReply(
+    aggregation.representativeMass,
+    evaluated,
+  );
+  return {
+    score: aggregation.score,
+    principalVariation:
+      representative === null
+        ? []
+        : [
+            representative.branch.move,
+            ...representative.result.principalVariation,
+          ],
+  };
+}
+
+/**
+ * A truncated king-passant node cannot stand pat because its ephemeral right
+ * is absent from FEN. Use a deterministic root-loss bound and a legal reply
+ * instead of consulting an evaluator with incomplete authority state.
+ */
+function kingPassantBudgetFallback(
+  node: PrivateNode,
+  ply: number,
+  state: SearchState,
+  expansion: TurnExpansion,
+): NodeResult {
+  const movesById = new Map(
+    expansion.moves.map((move) => [moveId(move), move] as const),
+  );
+  if (
+    node.position.turn === state.rootColor
+    || state.aggregation === "worst-case"
+  ) {
+    const move = orderedMoves(expansion.moves)[0];
+    if (move === undefined) {
+      throw new Error("King-passant fallback requires a legal reply.");
+    }
+    return {
+      score: -TERMINAL_SCORE + ply + 1,
+      principalVariation: [move],
+    };
+  }
+
+  const outcomes: WorldScoreOutcome[] = [];
+  for (const world of requiredOpponentWorlds(expansion)) {
+    if (world.terminalScore !== null) {
+      outcomes.push({
+        hypothesisId: world.hypothesisId,
+        probability: world.probability,
+        score: world.terminalScore,
+        replyId: null,
+      });
+      continue;
+    }
+    const replyId = [...world.legalMoveIds].sort()[0];
+    if (replyId === undefined || !movesById.has(replyId)) {
+      throw new Error(
+        `${world.hypothesisId} has no legal king-passant fallback reply.`,
+      );
+    }
+    outcomes.push({
+      hypothesisId: world.hypothesisId,
+      probability: world.probability,
+      score: -TERMINAL_SCORE + ply + 1,
+      replyId,
+    });
+  }
+  const aggregation = aggregateWorldOutcomes(state.aggregation, outcomes);
+  const selectedId = [...aggregation.representativeMass.entries()].sort(
+    ([leftId, leftMass], [rightId, rightMass]) =>
+      rightMass - leftMass || leftId.localeCompare(rightId),
+  )[0]?.[0];
+  const selectedMove =
+    selectedId === undefined ? undefined : movesById.get(selectedId);
+  if (selectedId !== undefined && selectedMove === undefined) {
+    throw new Error(`King-passant fallback reply ${selectedId} is missing.`);
+  }
+  return {
+    score: aggregation.score,
+    principalVariation: selectedMove === undefined ? [] : [selectedMove],
+  };
 }
 
 async function evaluateLeafBaseline(

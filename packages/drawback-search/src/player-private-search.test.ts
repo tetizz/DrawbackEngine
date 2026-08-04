@@ -392,6 +392,170 @@ describe("searchPlayerPrivateDrawbackMove", () => {
     expect(result.score).toBeGreaterThan(900_000);
   });
 
+  it("expires a declined king-passant right before static leaf evaluation", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "5r1k/8/8/8/8/8/8/4K2R w K - 0 1",
+    );
+    const evaluatedLeaves: Array<{
+      readonly kingPassantActive: boolean;
+      readonly history: readonly ChessMove[];
+    }> = [];
+    const result = await searchPlayerPrivateDrawbackRootMove(
+      {
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "decline-king-passant",
+            1,
+            "black",
+            onlyMoveRule("test-decline-king-passant", "f8", "f7"),
+            position,
+          ),
+        ],
+        aggregation: "worst-case",
+        evaluator: {
+          id: "test-reject-active-king-passant/v1",
+          evaluate(leaf) {
+            if (leaf.kingPassantActive) {
+              throw new Error(
+                "Static evaluator cannot represent active king-passant.",
+              );
+            }
+            evaluatedLeaves.push({
+              kingPassantActive: leaf.kingPassantActive,
+              history: structuredClone(leaf.history),
+            });
+            return Promise.resolve(37);
+          },
+        },
+        limits: { depth: 1, maxNodes: 100 },
+      },
+      { from: "e1", to: "g1" },
+    );
+
+    expect(result).toMatchObject({
+      score: 37,
+      nodes: 3,
+      leaves: 1,
+      truncated: false,
+    });
+    expect(result.principalVariation.slice(0, 2)).toMatchObject([
+      { from: "e1", to: "g1" },
+      { from: "f8", to: "f7" },
+    ]);
+    expect(result.principalVariation[0]?.flags).toContain("castle");
+    expect(evaluatedLeaves).toEqual([
+      {
+        kingPassantActive: false,
+        history: [
+          expect.objectContaining({ from: "e1", to: "g1" }),
+          expect.objectContaining({ from: "f8", to: "f7" }),
+        ],
+      },
+    ]);
+  });
+
+  it("keeps posterior king-passant replies isolated by hidden-rule world", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "5r1k/8/8/8/8/8/8/4K2R w K - 0 1",
+    );
+    const evaluatedReplies: string[] = [];
+    const result = await searchPlayerPrivateDrawbackRootMove(
+      {
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "rook-decline",
+            0.5,
+            "black",
+            onlyMoveRule("test-rook-decline", "f8", "f7"),
+            position,
+          ),
+          publicHypothesis(
+            "king-decline",
+            0.5,
+            "black",
+            onlyMoveRule("test-king-decline", "h8", "h7"),
+            position,
+          ),
+        ],
+        aggregation: "posterior-expected",
+        evaluator: {
+          id: "test-posterior-king-passant/v1",
+          evaluate(leaf) {
+            if (leaf.kingPassantActive) {
+              throw new Error("King-passant right reached static evaluator.");
+            }
+            const reply = leaf.history.at(-1);
+            const replyId = `${reply?.from ?? ""}${reply?.to ?? ""}`;
+            evaluatedReplies.push(replyId);
+            return Promise.resolve(replyId === "f8f7" ? 100 : -100);
+          },
+        },
+        limits: { depth: 1, maxNodes: 100 },
+      },
+      { from: "e1", to: "g1" },
+    );
+
+    expect(result).toMatchObject({
+      score: 0,
+      nodes: 4,
+      leaves: 2,
+      truncated: false,
+    });
+    expect(result.principalVariation.slice(0, 2)).toMatchObject([
+      { from: "e1", to: "g1" },
+      { from: "f8", to: "f7" },
+    ]);
+    expect(evaluatedReplies).toEqual(["f8f7", "h8h7"]);
+  });
+
+  it("fails closed without evaluating an uncharged king-passant reply", async () => {
+    const position = CapturableKingPosition.fromFen(
+      "5r1k/8/8/8/8/8/8/4K2R w K - 0 1",
+    );
+    let evaluationCount = 0;
+    const result = await searchPlayerPrivateDrawbackRootMove(
+      {
+        trace: createPublicGameTrace(position.snapshot()),
+        own: ownCapability("white", unrestrictedRule, position),
+        opponent: [
+          publicHypothesis(
+            "decline-king-passant",
+            1,
+            "black",
+            onlyMoveRule("test-bounded-king-passant", "f8", "f7"),
+            position,
+          ),
+        ],
+        aggregation: "worst-case",
+        evaluator: {
+          id: "test-no-uncharged-king-passant/v1",
+          evaluate() {
+            evaluationCount += 1;
+            return Promise.resolve(0);
+          },
+        },
+        limits: { depth: 1, maxNodes: 2 },
+      },
+      { from: "e1", to: "g1" },
+    );
+
+    expect(result).toMatchObject({
+      score: -999_998,
+      nodes: 2,
+      leaves: 0,
+      truncated: true,
+    });
+    expect(result.principalVariation.slice(0, 2)).toMatchObject([
+      { from: "e1", to: "g1" },
+      { from: "f8", to: "f7" },
+    ]);
+    expect(evaluationCount).toBe(0);
+  });
+
   it("is deterministic and does not expose rule parameters or state", async () => {
     const position = CapturableKingPosition.fromFen();
     const input = {

@@ -76,6 +76,11 @@ export interface OwnedNodeUciLeafEvaluator extends DrawbackLeafEvaluator {
   close(): Promise<void>;
 }
 
+export interface NodeUciLeafEvaluatorControlOptions {
+  /** Cancels authenticated process startup without changing evaluator identity. */
+  readonly signal?: AbortSignal;
+}
+
 export class NodeUciLeafEvaluatorFactoryError extends Error {
   public constructor(message: string, options?: ErrorOptions) {
     super(message, options);
@@ -101,6 +106,7 @@ export function deriveNodeUciLeafEvaluatorId(
  */
 export async function createOwnedNodeUciLeafEvaluator(
   input: NodeUciLeafEvaluatorConfig,
+  control: NodeUciLeafEvaluatorControlOptions = {},
 ): Promise<OwnedNodeUciLeafEvaluator> {
   const config = validateAndCopyConfig(input);
   const derived = deriveValidatedIdentity(config);
@@ -114,7 +120,7 @@ export async function createOwnedNodeUciLeafEvaluator(
     optionsDigest: derived.fixedOptionsDigest,
     advertisedOptionsSha256:
       config.engineIdentity.advertisedOptionsSha256,
-  });
+  }, control);
 
   if (config.kind === "stockfish") {
     try {

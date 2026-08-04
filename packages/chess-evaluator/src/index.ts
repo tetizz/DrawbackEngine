@@ -32,6 +32,7 @@ export {
 export type {
   AuthenticatedNodeUciEngine,
   AuthenticatedNodeUciEngineConfig,
+  AuthenticatedNodeUciEngineControlOptions,
   AuthenticatedUciEngineIdentity,
   SerializableUciEngineIdentity,
 } from "./authenticated-node-uci-engine.js";
@@ -46,6 +47,7 @@ export type {
   NodeFairyStockfishLeafEvaluatorConfig,
   NodeStockfishLeafEvaluatorConfig,
   NodeUciLeafEvaluatorConfig,
+  NodeUciLeafEvaluatorControlOptions,
   OwnedNodeUciLeafEvaluator,
 } from "./node-uci-leaf-evaluator-factory.js";
 export {

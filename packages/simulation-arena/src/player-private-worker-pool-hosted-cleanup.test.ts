@@ -4,6 +4,7 @@ const hostedState = vi.hoisted(() => ({
   evaluatorCreations: 0,
   evaluatorCloseCalls: 0,
   evaluatorCreationGate: undefined as Promise<void> | undefined,
+  evaluatorControlSignal: undefined as AbortSignal | undefined,
   evaluatorId: "",
   deferredEvaluatorCreation: 0,
   terminalCleanup: false,
@@ -20,13 +21,20 @@ vi.mock("@drawbackengine/chess-evaluator", async (importOriginal) => {
   ) => Error;
   return {
     ...actual,
-    createOwnedNodeUciLeafEvaluator: async () => {
+    createOwnedNodeUciLeafEvaluator: async (
+      _config: unknown,
+      control: { readonly signal?: AbortSignal } = {},
+    ) => {
       hostedState.evaluatorCreations += 1;
+      hostedState.evaluatorControlSignal = control.signal;
       if (
         hostedState.evaluatorCreations
           === hostedState.deferredEvaluatorCreation
       ) {
-        await hostedState.evaluatorCreationGate;
+        await abortableGate(
+          hostedState.evaluatorCreationGate,
+          control.signal,
+        );
       }
       return {
         id: hostedState.evaluatorId,
@@ -52,6 +60,52 @@ vi.mock("@drawbackengine/chess-evaluator", async (importOriginal) => {
     },
   };
 });
+
+function abortableGate(
+  gate: Promise<void> | undefined,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (gate === undefined) {
+    return Promise.resolve();
+  }
+  if (signal === undefined) {
+    return gate;
+  }
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const onAbort = (): void => {
+      if (!settled) {
+        settled = true;
+        signal.removeEventListener("abort", onAbort);
+        reject(signal.reason instanceof Error
+          ? signal.reason
+          : new DOMException("Test startup aborted.", "AbortError"));
+      }
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+    }
+    void gate.then(
+      () => {
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        }
+      },
+      (error: unknown) => {
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          reject(error instanceof Error
+            ? error
+            : new Error("Test evaluator gate failed.", { cause: error }));
+        }
+      },
+    );
+  });
+}
 
 import {
   deriveNodeUciLeafEvaluatorId,
@@ -113,6 +167,7 @@ afterEach(() => {
   hostedState.evaluatorCreations = 0;
   hostedState.evaluatorCloseCalls = 0;
   hostedState.evaluatorCreationGate = undefined;
+  hostedState.evaluatorControlSignal = undefined;
   hostedState.evaluatorId = evaluatorId;
   hostedState.deferredEvaluatorCreation = 0;
   hostedState.terminalCleanup = false;
@@ -121,6 +176,33 @@ afterEach(() => {
 });
 
 describe("pre-slot hosted evaluator cleanup", () => {
+  it("cancels authenticated evaluator startup before launching a worker", async () => {
+    hostedState.deferredEvaluatorCreation = 1;
+    hostedState.evaluatorCreationGate = new Promise<void>(() => undefined);
+    const controller = new AbortController();
+    const reason = new Error("Stop worker-pool startup.");
+    const started = createPlayerPrivateWorkerPool({
+      workers: 1,
+      policy,
+      attempts: 1,
+      signal: controller.signal,
+      workerFactory: () => {
+        hostedState.workerLaunches += 1;
+        throw new Error("Worker must not launch after startup cancellation.");
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(hostedState.evaluatorControlSignal).toBe(controller.signal);
+    });
+    controller.abort(reason);
+
+    await expect(started).rejects.toBe(reason);
+    expect(hostedState.evaluatorCreations).toBe(1);
+    expect(hostedState.workerLaunches).toBe(0);
+    expect(hostedState.evaluatorCloseCalls).toBe(0);
+  });
+
   it("retains the same evaluator when worker launch cleanup stays unproven", async () => {
     const failure = await createPlayerPrivateWorkerPool({
       workers: 1,

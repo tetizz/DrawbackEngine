@@ -114,8 +114,12 @@ async function initializedClient(
 describe("initializeFairyStockfishLeafEvaluator", () => {
   it("pins the checked-in custom variant bytes", async () => {
     const bytes = await readFile(VARIANT_PATH);
+    const source = bytes.toString("utf8");
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(
       DRAWBACKCHESS_FAIRY_VARIANT_SHA256,
+    );
+    expect(source).toMatch(
+      /(?:^|\r?\n)king = -\r?\ncommoner = k\r?\ncastlingKingPiece = k(?:\r?\n|$)/u,
     );
     const client = new UciClient(new MockUciTransport([]));
     await expect(initializeFairyStockfishLeafEvaluator({

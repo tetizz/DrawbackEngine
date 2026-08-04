@@ -188,3 +188,49 @@ export type {
   SimulationPly,
   SimulationResult,
 } from "./simulation.js";
+export {
+  PlayerPrivatePlayGame,
+  PlayerPrivatePlayStateError,
+} from "./player-private-play.js";
+export type {
+  DrawbackPlayReveal,
+  OwnDrawbackDisclosure,
+  PlayerActionSubmission,
+  PlayerObservedPiece,
+  PlayerObservedSquare,
+  PlayerPlayAction,
+  PlayerPlayObservationV1,
+  PlayerPlayStatus,
+  PlayerPrivateEngineMove,
+  PlayerPrivatePlayDependencies,
+  PlayerPrivatePlayOptions,
+  PlayerPrivatePlayReveal,
+  PlayerPrivatePlaySearch,
+  PlayerPrivatePlaySearchRequest,
+  PlayerVisibleMove,
+} from "./player-private-play.js";
+export {
+  PLAYER_PRIVATE_STRENGTH_REPORT_FORMAT,
+  runPlayerPrivateStrengthHarness,
+} from "./player-private-strength.js";
+export type {
+  PlayerPrivateStrengthEvaluatorKind,
+  PlayerPrivateStrengthHarnessOptions,
+  PlayerPrivateStrengthLegResult,
+  PlayerPrivateStrengthPairResult,
+  PlayerPrivateStrengthParticipant,
+  PlayerPrivateStrengthParticipantSnapshot,
+  PlayerPrivateStrengthReport,
+} from "./player-private-strength.js";
+export {
+  DEFAULT_STRENGTH_CONFIDENCE_LEVEL,
+  summarizePairedStrengthScores,
+} from "./player-private-strength-statistics.js";
+export type {
+  CandidateGameScore,
+  PairedCandidateGameScores,
+  PairedScoreUncertainty,
+  PairedStrengthScoreSummary,
+  StrengthScoreBounds,
+  StrengthScoreLine,
+} from "./player-private-strength-statistics.js";

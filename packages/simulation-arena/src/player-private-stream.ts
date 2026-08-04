@@ -98,6 +98,7 @@ async function* streamWindows(
         workers: Math.min(workers, windowSize, window.length),
         policy,
         ...(maxPlies === undefined ? {} : { maxPlies }),
+        ...(signal === undefined ? {} : { signal }),
       });
       throwIfAborted(signal);
       let results: ReadonlyMap<number, PlayerPrivateSimulationResult>;

@@ -262,6 +262,11 @@ export interface UciEvaluationContextDigestInput {
   readonly advertisedOptionsSha256?: string;
 }
 
+export interface AuthenticatedNodeUciEngineControlOptions {
+  /** Cancels executable staging/initialization without changing provenance. */
+  readonly signal?: AbortSignal;
+}
+
 /** Binds actual UCI settings to authenticated code and runtime assets. */
 export function deriveUciEvaluationContextDigest(
   input: UciEvaluationContextDigestInput,
@@ -303,7 +308,9 @@ export function deriveUciEvaluationContextDigest(
  */
 export async function createAuthenticatedNodeUciEngine(
   input: AuthenticatedNodeUciEngineConfig,
+  control: AuthenticatedNodeUciEngineControlOptions = {},
 ): Promise<AuthenticatedNodeUciEngine> {
+  throwIfAborted(control.signal);
   const config = validateAndCopyConfig(input);
   const executable = await stageAuthenticatedExecutable(
     config.process.executablePath,
@@ -313,12 +320,17 @@ export async function createAuthenticatedNodeUciEngine(
   let client: UciClient | undefined;
 
   try {
+    throwIfAborted(control.signal);
     transport = new NodeProcessUciTransport({
       ...config.process,
       executablePath: executable.path,
     });
     client = new UciClient(transport, config.client);
-    const identity = await client.initialize();
+    const identity = await client.initialize({
+      ...(control.signal === undefined
+        ? {}
+        : { signal: control.signal }),
+    });
     if (identity.name !== config.engineIdentity.uciName) {
       throw new AuthenticatedNodeUciEngineError(
         "Initialized UCI engine name does not match the caller-pinned identity.",
@@ -385,7 +397,7 @@ export async function createAuthenticatedNodeUciEngine(
     });
   } catch (error: unknown) {
     return throwAfterSameOwnerCleanup(
-      error,
+      startupFailure(error, control.signal),
       () =>
         closeAuthenticatedEngine(
           client,
@@ -395,6 +407,31 @@ export async function createAuthenticatedNodeUciEngine(
       "UCI authentication failed and authenticated cleanup encountered failures.",
     );
   }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw abortReason(signal);
+  }
+}
+
+function startupFailure(
+  error: unknown,
+  signal: AbortSignal | undefined,
+): unknown {
+  return signal?.aborted === true && isAbortError(error)
+    ? abortReason(signal)
+    : error;
+}
+
+function isAbortError(value: unknown): boolean {
+  return value instanceof Error && value.name === "AbortError";
+}
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("UCI initialization was aborted.", "AbortError");
 }
 
 function retryableClose(closeOnce: () => Promise<void>): () => Promise<void> {

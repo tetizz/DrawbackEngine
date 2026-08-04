@@ -13,7 +13,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {
-    files: ["scripts/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "apps/**/vite.config.mjs"],
     ...tseslint.configs.disableTypeChecked,
   },
   {

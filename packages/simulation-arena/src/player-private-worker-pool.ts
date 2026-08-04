@@ -40,6 +40,8 @@ export interface PlayerPrivateWorkerPoolOptions {
   readonly workers: number;
   readonly policy: PlayerPrivateSearchPolicy;
   readonly maxPlies?: number;
+  /** Cancels evaluator and worker initialization through same-owner cleanup. */
+  readonly signal?: AbortSignal;
   readonly attempts?: number;
   readonly initializationTimeoutMs?: number;
   readonly shutdownTimeoutMs?: number;
@@ -126,6 +128,7 @@ extends PlayerPrivateWorkerPoolCleanupError {
 export async function createPlayerPrivateWorkerPool(
   options: PlayerPrivateWorkerPoolOptions,
 ): Promise<PlayerPrivateWorkerPool> {
+  throwIfAborted(options.signal);
   assertPositiveSafeInteger(options.workers, "workers");
   assertPlayerPrivateSearchPolicy(options.policy);
   if (options.maxPlies !== undefined) {
@@ -151,6 +154,7 @@ export async function createPlayerPrivateWorkerPool(
     ...(options.maxPlies === undefined
       ? {}
       : { maxPlies: options.maxPlies }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
     attempts,
     initializationTimeoutMs,
     shutdownTimeoutMs,
@@ -185,6 +189,7 @@ interface ValidatedPoolOptions {
   readonly workers: number;
   readonly policy: PlayerPrivateSearchPolicy;
   readonly maxPlies?: number;
+  readonly signal?: AbortSignal;
   readonly attempts: number;
   readonly initializationTimeoutMs: number;
   readonly shutdownTimeoutMs: number;
@@ -218,6 +223,7 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
   }
 
   public async initialize(): Promise<void> {
+    throwIfAborted(this.options.signal);
     const starts = this.slots.map((_, workerId) =>
       this.startSlotWithRetries(workerId)
     );
@@ -465,6 +471,7 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
   private async startSlotOnce(
     workerId: number,
   ): Promise<PlayerPrivateWorkerSlot> {
+    throwIfAborted(this.options.signal);
     if (this.closed) {
       throw new Error("Player-private worker pool is closed.");
     }
@@ -489,6 +496,18 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
         : { maxPlies: this.options.maxPlies }),
     } satisfies PlayerPrivateWorkerInitialization);
     const hostedEvaluator = await this.createHostedEvaluator();
+    if (this.options.signal?.aborted === true) {
+      const interrupted = abortReason(this.options.signal);
+      if (hostedEvaluator === undefined) {
+        throw interrupted;
+      }
+      return throwAfterSameOwnerCleanup(
+        interrupted,
+        () => hostedEvaluator.close(),
+        "Startup cancellation and parent-owned UCI cleanup encountered failures.",
+        leafEvaluatorCleanupProvesComplete,
+      );
+    }
     if (this.poolIsClosed()) {
       const closedDuringEvaluatorCreation = new Error(
         "Player-private worker pool closed during evaluator creation.",
@@ -554,7 +573,7 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
     );
     this.liveSlots.add(slot);
     try {
-      await slot.initialize();
+      await abortableOperation(slot.initialize(), this.options.signal);
       return slot;
     } catch (error: unknown) {
       try {
@@ -577,6 +596,11 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
     }
     const evaluator = await createOwnedNodeUciLeafEvaluator(
       this.options.policy.evaluator.config,
+      {
+        ...(this.options.signal === undefined
+          ? {}
+          : { signal: this.options.signal }),
+      },
     );
     if (evaluator.id !== this.options.policy.evaluator.evaluatorId) {
       return throwAfterSameOwnerCleanup(
@@ -592,6 +616,62 @@ class FixedPlayerPrivateWorkerPool implements PlayerPrivateWorkerPool {
   private poolIsClosed(): boolean {
     return this.closed;
   }
+}
+
+function abortableOperation<T>(
+  operation: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (signal === undefined) {
+    return operation;
+  }
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const onAbort = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+    }
+    void operation.then(
+      (value) => {
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          resolve(value);
+        }
+      },
+      (error: unknown) => {
+        if (!settled) {
+          settled = true;
+          signal.removeEventListener("abort", onAbort);
+          reject(error instanceof Error
+            ? error
+            : new Error("Player-private worker initialization failed.", {
+                cause: error,
+              }));
+        }
+      },
+    );
+  });
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw abortReason(signal);
+  }
+}
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Player-private startup was aborted.", "AbortError");
 }
 
 function leafEvaluatorCleanupProvesComplete(error: unknown): boolean {

@@ -41,6 +41,8 @@ const expectedArenaFiles = new Set([
   "player-private-parallel-worker.ts",
   "player-private-parallel.test.ts",
   "player-private-parallel.ts",
+  "player-private-play.test.ts",
+  "player-private-play.ts",
   "player-private-leaf-evaluator-protocol.ts",
   "player-private-remote-leaf-evaluator.test.ts",
   "player-private-remote-leaf-evaluator.ts",
@@ -53,6 +55,9 @@ const expectedArenaFiles = new Set([
   "player-private-stream.test.ts",
   "player-private-stream-lifecycle.test.ts",
   "player-private-stream.ts",
+  "player-private-strength-statistics.ts",
+  "player-private-strength.test.ts",
+  "player-private-strength.ts",
   "player-private-terminal-validation.ts",
   "player-private-trace.test.ts",
   "player-private-trace.ts",
@@ -162,6 +167,7 @@ for (const file of expectedArenaFiles) {
 
 const manifests = [
   "apps/engine-cli/package.json",
+  "apps/play-web/package.json",
   "packages/chess-core/package.json",
   "packages/chess-evaluator/package.json",
   "packages/drawback-engine/package.json",

@@ -38,7 +38,7 @@ export const DRAWBACKCHESS_FAIRY_VARIANT = "drawbackchess";
  * data/catalog/drawbackchess-fairy-v1.ini.
  */
 export const DRAWBACKCHESS_FAIRY_VARIANT_SHA256 =
-  "af2c525591025d93e7ba7552c853c8126a5d0334d5634eb2e57b9f171ad058d3";
+  "06f444eddf2f4b42ca55e50e317411b01509ee3178c95ec5fcaf26cbdde2a5b9";
 
 export interface InitializeFairyStockfishLeafEvaluatorOptions {
   /**

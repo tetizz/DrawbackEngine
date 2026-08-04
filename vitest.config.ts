@@ -8,7 +8,7 @@ export default defineConfig({
     maxWorkers: 2,
     include: [
       "packages/**/*.test.ts",
-      "apps/**/*.test.ts",
+      "apps/**/*.test.{ts,tsx}",
       "scripts/**/*.test.mjs",
     ],
     coverage: {

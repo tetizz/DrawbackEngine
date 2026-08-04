@@ -33,6 +33,7 @@ are not included.
 ```text
 apps/
   engine-cli/             local demos, exact move search, and PGN sidecars
+  play-web/               local human-vs-engine browser game
 packages/
   shared/                 colors and deterministic random sources
   drawback-engine/        rule contracts, rules, filters, and losses
@@ -83,6 +84,40 @@ pnpm test:search
 pnpm test:arena
 pnpm catalog:verify-evidence
 ```
+
+## Play against the engine
+
+Build and launch the local browser board with an authenticated Fairy-Stockfish
+configuration:
+
+```bash
+pnpm play:web -- --evaluator-config C:\trusted\fairy-stockfish.json
+```
+
+Open the printed `http://127.0.0.1:4173` address. The app supports full games,
+click or drag moves, promotion, board flipping, legal-target highlighting,
+resignation, a post-game drawback reveal, and responsive keyboard-accessible
+controls.
+
+This browser surface currently offers the frozen audited 25-rule
+player-private catalog. It does not claim support for every authority-compatible
+or observed drawback in interactive player-private search.
+
+The Quick, Balanced, and Deep choices are exact outer-search budgets, not Elo
+claims. Their configured depth and node cap remain visible during the game;
+the configured Fairy-Stockfish leaf depth, Hash, thread count, and fixed skill
+setting are shown separately. Every computer move calls the player-private
+drawback search and authenticated evaluator. There are no scripted moves or
+material-evaluator fallbacks.
+
+Browser play binds only to IPv4 loopback, requires same-origin state changes,
+and never sends FEN, SAN, captured-piece metadata, search scores, completed
+work counters, opponent hypotheses, hidden state, or local paths to the page.
+Only the player's own drawback is visible before the game ends. See
+[`docs/architecture/local-play-web.md`](docs/architecture/local-play-web.md)
+for the security and lifecycle contract. The evaluator JSON format is the
+Fairy-Stockfish form documented in
+[`docs/architecture/player-private-uci-workers.md`](docs/architecture/player-private-uci-workers.md).
 
 ## CLI
 

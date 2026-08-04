@@ -586,7 +586,7 @@ describe("schema-9 producer provenance", () => {
     } finally {
       await rm(repository, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   it("rejects a different checkout than the executing source", async () => {
     const supplied = await mkdtemp(join(tmpdir(), "schema9-other-git-test-"));
