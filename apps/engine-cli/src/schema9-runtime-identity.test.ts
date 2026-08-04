@@ -1,4 +1,6 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import {
   cp,
   mkdir,
@@ -10,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   IncompleteSameOwnerCleanupError,
 } from "@drawbackengine/chess-evaluator";
@@ -63,6 +65,9 @@ const RUNTIME = Object.freeze({
   execArgv: Object.freeze([] as const),
 }) satisfies Schema9RuntimeDescriptor;
 const COMMIT = "a".repeat(40);
+const TYPESCRIPT_COMPILER = createRequire(import.meta.url).resolve(
+  "typescript/lib/tsc.js",
+);
 
 describe("schema-9 producer runtime identity", () => {
   it("matches the cross-repository aggregate golden digest", () => {
@@ -123,6 +128,80 @@ describe("schema-9 producer runtime identity", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("attests identical LF and CRLF source builds without masking semantic changes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "schema9-runtime-build-lines-"));
+    const executing = join(root, "executing");
+    const rebuilt = join(root, "rebuilt");
+    const scratch = join(root, "scratch");
+    try {
+      await createRuntimeFixture(executing, "\n");
+      await createRuntimeFixture(rebuilt, "\n");
+      await mkdir(scratch);
+      const executingArtifact = await compileRuntimeIdentityFixture(
+        join(root, "executing-source"),
+        "\r\n",
+        1,
+      );
+      const rebuiltArtifact = await compileRuntimeIdentityFixture(
+        join(root, "rebuilt-source"),
+        "\n",
+        1,
+      );
+      expect(executingArtifact.equals(rebuiltArtifact)).toBe(true);
+      expect(executingArtifact.includes(13)).toBe(false);
+      await writeFile(
+        join(executing, "apps", "engine-cli", "dist", "runtime-build.js"),
+        executingArtifact,
+        { flag: "wx" },
+      );
+      await writeFile(
+        join(rebuilt, "apps", "engine-cli", "dist", "runtime-build.js"),
+        rebuiltArtifact,
+        { flag: "wx" },
+      );
+
+      await expect(attestSchema9ProducerRuntime(
+        executing,
+        COMMIT,
+        undefined,
+        {
+          runtime: RUNTIME,
+          temporaryParent: scratch,
+          prepareSnapshot: async (_source, _commit, snapshot) => {
+            await cp(rebuilt, snapshot, { recursive: true });
+          },
+        },
+      )).resolves.toEqual(
+        await computeSchema9ProducerRuntimeIdentity(rebuilt, RUNTIME),
+      );
+
+      const changedArtifact = await compileRuntimeIdentityFixture(
+        join(root, "changed-source"),
+        "\n",
+        2,
+      );
+      expect(changedArtifact.equals(rebuiltArtifact)).toBe(false);
+      await writeFile(
+        join(executing, "apps", "engine-cli", "dist", "runtime-build.js"),
+        changedArtifact,
+      );
+      await expect(attestSchema9ProducerRuntime(
+        executing,
+        COMMIT,
+        undefined,
+        {
+          runtime: RUNTIME,
+          temporaryParent: scratch,
+          prepareSnapshot: async (_source, _commit, snapshot) => {
+            await cp(rebuilt, snapshot, { recursive: true });
+          },
+        },
+      )).rejects.toThrow("isolated clean rebuild");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it("rejects stale ignored dist against an isolated rebuilt snapshot", async () => {
     const root = await mkdtemp(join(tmpdir(), "schema9-runtime-stale-"));
@@ -851,6 +930,68 @@ describe("schema-9 producer runtime identity", () => {
     }).toThrow();
   });
 });
+
+async function compileRuntimeIdentityFixture(
+  projectRoot: string,
+  lineEnding: "\n" | "\r\n",
+  semanticValue: number,
+): Promise<Buffer> {
+  const sourceRoot = join(projectRoot, "src");
+  await mkdir(sourceRoot, { recursive: true });
+  await writeFile(
+    join(projectRoot, "package.json"),
+    JSON.stringify({ private: true, type: "module" }),
+    { encoding: "utf8", flag: "wx" },
+  );
+  await writeFile(
+    join(projectRoot, "tsconfig.json"),
+    JSON.stringify({
+      extends: join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "..",
+        "..",
+        "tsconfig.base.json",
+      ),
+      compilerOptions: {
+        rootDir: "src",
+        outDir: "dist",
+        declaration: false,
+        declarationMap: false,
+        sourceMap: false,
+      },
+      include: ["src"],
+    }),
+    { encoding: "utf8", flag: "wx" },
+  );
+  await writeFile(
+    join(sourceRoot, "runtime-build.ts"),
+    [
+      "// Runtime identity source checkout fixture.",
+      `export const runtimeIdentityFixture = ${String(semanticValue)};`,
+      "",
+    ].join(lineEnding),
+    { encoding: "utf8", flag: "wx" },
+  );
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    execFile(
+      process.execPath,
+      [TYPESCRIPT_COMPILER, "-p", join(projectRoot, "tsconfig.json")],
+      { windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error === null) {
+          resolvePromise();
+          return;
+        }
+        rejectPromise(new Error(
+          `TypeScript fixture compilation failed: ${stdout}${stderr}`,
+          { cause: error },
+        ));
+      },
+    );
+  });
+  return readFile(join(projectRoot, "dist", "runtime-build.js"));
+}
 
 async function createRuntimeFixture(
   root: string,
