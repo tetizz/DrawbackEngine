@@ -85,5 +85,7 @@ describe("GameScreen", () => {
     expect(container.textContent).toContain("Engine is searching the real tree");
     expect(container.textContent).toContain("Engine to move");
     expect(container.textContent).not.toContain("Your move");
+    expect(container.textContent).toContain("Quick");
+    expect(container.textContent).toContain("D1 · 5,000 nodes");
   });
 });

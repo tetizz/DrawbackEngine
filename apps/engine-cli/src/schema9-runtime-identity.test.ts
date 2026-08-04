@@ -515,28 +515,18 @@ describe("schema-9 producer runtime identity", () => {
       const root = await mkdtemp(join(tmpdir(), "schema9-taskkill-root-test-"));
       const parentScript = join(root, "parent.mjs");
       const pidFile = join(root, "grandchild.pid");
-      const previousSystemRoot = process.env["SystemRoot"];
-      const childEnvironment = { ...process.env };
       let grandchildPid: number | undefined;
       try {
         await writeProcessTreeScript(parentScript);
-        process.env["SystemRoot"] = join(root, "attacker-windows");
-        await expect(runSchema9RuntimeCommandForTesting(
-          process.execPath,
-          [parentScript, pidFile],
+        await runHostileSystemRootTaskkillVerification({
           root,
-          undefined,
-          1_000,
-          childEnvironment,
-        )).rejects.toThrow("time limit");
+          parentScript,
+          pidFile,
+          hostileSystemRoot: join(root, "attacker-windows"),
+        });
         grandchildPid = await waitForPidFile(pidFile);
         await expectProcessExit(grandchildPid);
       } finally {
-        if (previousSystemRoot === undefined) {
-          delete process.env["SystemRoot"];
-        } else {
-          process.env["SystemRoot"] = previousSystemRoot;
-        }
         bestEffortKillProcess(grandchildPid);
         await rm(root, {
           recursive: true,
@@ -546,7 +536,7 @@ describe("schema-9 producer runtime identity", () => {
         });
       }
     },
-    20_000,
+    30_000,
   );
 
   it.skipIf(process.platform !== "win32")(
@@ -1300,6 +1290,68 @@ async function writeRuntimeWrapperScript(
     ].join("\n"),
     { encoding: "utf8", flag: "wx" },
   );
+}
+
+async function runHostileSystemRootTaskkillVerification(
+  input: Readonly<{
+    root: string;
+    parentScript: string;
+    pidFile: string;
+    hostileSystemRoot: string;
+  }>,
+): Promise<void> {
+  const runtimeModuleUrl = new URL(
+    "./schema9-runtime-identity.ts",
+    import.meta.url,
+  ).href;
+  const sourceLoader = new URL(
+    "../node_modules/tsx/dist/loader.mjs",
+    import.meta.url,
+  ).href;
+  const wrapper = String.raw`
+const runtimeModuleUrl = process.argv[2];
+const parentScript = process.argv[3];
+const pidFile = process.argv[4];
+const root = process.argv[5];
+const hostileSystemRoot = process.argv[6];
+const { runSchema9RuntimeCommandForTesting } = await import(runtimeModuleUrl);
+const childEnvironment = { ...process.env };
+process.env.SystemRoot = hostileSystemRoot;
+const failure = await runSchema9RuntimeCommandForTesting(
+  process.execPath,
+  [parentScript, pidFile],
+  root,
+  undefined,
+  1_000,
+  childEnvironment,
+).then(() => undefined, (error) => error);
+if (!(failure instanceof Error) || !failure.message.includes("time limit")) {
+  throw new Error("isolated hostile-SystemRoot command did not time out");
+}
+process.stdout.write("taskkill-authenticated\n");
+`;
+  const output = await runSchema9RuntimeCommandForTesting(
+    process.execPath,
+    [
+      "--import",
+      sourceLoader,
+      "--input-type=module",
+      "--eval",
+      wrapper,
+      "schema9-hostile-system-root-wrapper",
+      runtimeModuleUrl,
+      input.parentScript,
+      input.pidFile,
+      input.root,
+      input.hostileSystemRoot,
+    ],
+    input.root,
+    undefined,
+    15_000,
+  );
+  if (output.trim() !== "taskkill-authenticated") {
+    throw new Error("Isolated hostile-SystemRoot verification was incomplete.");
+  }
 }
 
 async function waitForPidFile(path: string): Promise<number> {

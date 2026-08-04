@@ -13,7 +13,7 @@ import {
   type PlayerPrivateStrengthParticipant,
   type PlayerPrivateStrengthReport,
 } from "@drawbackengine/simulation-arena";
-import { redactLocalPaths } from "./failure-redaction.js";
+import { formatPublicFailureMessage } from "./failure-redaction.js";
 import { closeEvaluatorRuntime } from "./evaluator-runtime-cleanup.js";
 import { loadPlayerPrivateEvaluatorPolicy } from "./player-private-evaluator-config.js";
 import {
@@ -297,10 +297,12 @@ function requiredId(value: string | undefined, label: string): string {
 }
 
 void main().catch((error: unknown) => {
-  const raw = error instanceof Error ? error.message : "Unknown strength harness error.";
   console.error(JSON.stringify({
     kind: "player-private-strength-failure",
-    message: redactLocalPaths(raw),
+    message: formatPublicFailureMessage(
+      error,
+      "Unknown strength harness error.",
+    ),
   }));
   process.exitCode = findCleanupTerminationError(error)?.exitCode ?? 1;
 }).finally(() => {

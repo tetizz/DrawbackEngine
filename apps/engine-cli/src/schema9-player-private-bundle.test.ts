@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import {
   access,
   chmod,
-  copyFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -14,7 +13,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import type {
   Schema9ProducerRuntimeIdentity,
@@ -32,6 +31,7 @@ import {
 import {
   canonicalSchema9RuntimeJson,
   runSchema9AuthenticatedGit,
+  runSchema9RuntimeCommandForTesting,
 } from "./schema9-runtime-identity.js";
 import type {
   PlayerPrivateBatchOptions,
@@ -559,6 +559,10 @@ describe("schema-9 bundle ownership and hashing", () => {
 describe("schema-9 producer provenance", () => {
   it("accepts a clean exact checkout and rejects dirty or hidden state", async () => {
     const repository = await mkdtemp(join(tmpdir(), "schema9-git-test-"));
+    const controller = new AbortController();
+    const deadline = setTimeout(() => {
+      controller.abort(new Error("Schema-9 provenance test deadline expired."));
+    }, 60_000);
     try {
       git(repository, ["init"]);
       git(repository, ["config", "user.name", "tetizz"]);
@@ -572,21 +576,34 @@ describe("schema-9 producer provenance", () => {
       git(repository, ["commit", "-m", "Initial test state"]);
       const commit = git(repository, ["rev-parse", "HEAD"]).trim();
 
-      await expect(verifiedCleanEngineCommit(repository, repository))
+      await expect(verifiedCleanEngineCommit(
+        repository,
+        repository,
+        controller.signal,
+      ))
         .resolves.toBe(commit);
 
       await writeFile(join(repository, "untracked.txt"), "dirty\n", "utf8");
-      await expect(verifiedCleanEngineCommit(repository, repository))
+      await expect(verifiedCleanEngineCommit(
+        repository,
+        repository,
+        controller.signal,
+      ))
         .rejects.toThrow("not clean");
       await rm(join(repository, "untracked.txt"));
 
       git(repository, ["update-index", "--assume-unchanged", "tracked.txt"]);
-      await expect(verifiedCleanEngineCommit(repository, repository))
+      await expect(verifiedCleanEngineCommit(
+        repository,
+        repository,
+        controller.signal,
+      ))
         .rejects.toThrow("hidden index flags");
     } finally {
+      clearTimeout(deadline);
       await rm(repository, { recursive: true, force: true });
     }
-  }, 20_000);
+  }, 70_000);
 
   it("rejects a different checkout than the executing source", async () => {
     const supplied = await mkdtemp(join(tmpdir(), "schema9-other-git-test-"));
@@ -604,9 +621,6 @@ describe("schema-9 producer provenance", () => {
     const root = await mkdtemp(join(tmpdir(), "schema9-shadow-git-test-"));
     const repository = join(root, "repository");
     const shadow = join(root, "shadow");
-    const previousPath = process.env["PATH"];
-    const previousGitDirectory = process.env["GIT_DIR"];
-    const previousSystemRoot = process.env["SystemRoot"];
     try {
       await mkdir(repository);
       git(repository, ["init"]);
@@ -625,35 +639,22 @@ describe("schema-9 producer provenance", () => {
         shadow,
         process.platform === "win32" ? "git.exe" : "git",
       );
-      await copyFile(process.execPath, fakeGit);
+      await writeFile(fakeGit, "not-the-system-git\n", "utf8");
       if (process.platform !== "win32") {
         await chmod(fakeGit, 0o755);
       }
-      process.env["PATH"] = shadow;
-      process.env["GIT_DIR"] = join(root, "attacker-git-dir");
-      process.env["SystemRoot"] = join(root, "attacker-windows");
 
-      await expect(verifiedCleanEngineCommit(repository, repository))
+      await expect(runHostileEnvironmentCommitVerification({
+        repository,
+        shadowPath: shadow,
+        gitDirectory: join(root, "attacker-git-dir"),
+        systemRoot: join(root, "attacker-windows"),
+      }))
         .resolves.toBe(commit);
     } finally {
-      if (previousPath === undefined) {
-        delete process.env["PATH"];
-      } else {
-        process.env["PATH"] = previousPath;
-      }
-      if (previousGitDirectory === undefined) {
-        delete process.env["GIT_DIR"];
-      } else {
-        process.env["GIT_DIR"] = previousGitDirectory;
-      }
-      if (previousSystemRoot === undefined) {
-        delete process.env["SystemRoot"];
-      } else {
-        process.env["SystemRoot"] = previousSystemRoot;
-      }
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 70_000);
 
   it("does not execute a repository core.fsmonitor command", async () => {
     const root = await mkdtemp(join(tmpdir(), "schema9-fsmonitor-test-"));
@@ -757,6 +758,51 @@ describe("schema-9 producer provenance", () => {
     }
   });
 });
+
+async function runHostileEnvironmentCommitVerification(input: Readonly<{
+  repository: string;
+  shadowPath: string;
+  gitDirectory: string;
+  systemRoot: string;
+}>): Promise<string> {
+  const moduleUrl = pathToFileURL(fileURLToPath(
+    new URL("./schema9-player-private-bundle.ts", import.meta.url),
+  )).href;
+  const sourceLoader = new URL(
+    "../node_modules/tsx/dist/loader.mjs",
+    import.meta.url,
+  ).href;
+  const wrapper = String.raw`
+const moduleUrl = process.argv[2];
+const repository = process.argv[3];
+process.env.PATH = process.argv[4];
+process.env.GIT_DIR = process.argv[5];
+process.env.SystemRoot = process.argv[6];
+const { verifiedCleanEngineCommit } = await import(moduleUrl);
+const commit = await verifiedCleanEngineCommit(repository, repository);
+process.stdout.write(commit);
+`;
+  const output = await runSchema9RuntimeCommandForTesting(
+    process.execPath,
+    [
+      "--import",
+      sourceLoader,
+      "--input-type=module",
+      "--eval",
+      wrapper,
+      "schema9-hostile-environment-wrapper",
+      moduleUrl,
+      input.repository,
+      input.shadowPath,
+      input.gitDirectory,
+      input.systemRoot,
+    ],
+    input.repository,
+    undefined,
+    60_000,
+  );
+  return output.trim();
+}
 
 function validArguments(overrides: Readonly<{
   games?: string;

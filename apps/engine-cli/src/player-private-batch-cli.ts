@@ -9,7 +9,7 @@ import { runPlayerPrivateBatch } from "./player-private-batch.js";
 import {
   loadPlayerPrivateEvaluatorPolicy,
 } from "./player-private-evaluator-config.js";
-import { redactLocalPaths } from "./failure-redaction.js";
+import { formatPublicFailureMessage } from "./failure-redaction.js";
 import { retryRetainedCleanup } from "./retained-cleanup.js";
 import {
   findCleanupTerminationError,
@@ -178,10 +178,9 @@ function unsignedSeed(
 
 void main().catch(async (error: unknown) => {
   const reported = await retryRetainedPoolCleanup(error);
-  const message = redactLocalPaths(
-    reported instanceof Error
-      ? reported.message
-      : "Unknown player-private error.",
+  const message = formatPublicFailureMessage(
+    reported,
+    "Unknown player-private error.",
   );
   console.error(JSON.stringify({
     kind: "player-private-failure",

@@ -7,6 +7,9 @@ export default defineConfig({
   plugins: [react()],
   build: {
     outDir: fileURLToPath(new URL("./dist/client", import.meta.url)),
-    emptyOutDir: false,
+    // The server compiler emits to the sibling dist/server directory. Cleaning
+    // this exact client outDir removes obsolete hashed bundles without
+    // disturbing the server artifact.
+    emptyOutDir: true,
   },
 });

@@ -16,7 +16,7 @@ import { writeUtf8FileAtomicNoClobber } from "./atomic-file.js";
 import {
   generateCompletedPgnEvaluatorSidecarFromTrustedProvider,
 } from "./pgn-evaluator-sidecar.js";
-import { redactLocalPaths } from "./failure-redaction.js";
+import { formatPublicFailureMessage } from "./failure-redaction.js";
 import { retryRetainedCleanup } from "./retained-cleanup.js";
 import {
   findCleanupTerminationError,
@@ -145,10 +145,10 @@ async function main(): Promise<void> {
 
 void main().catch(async (error: unknown) => {
   const reported = await retryRetainedCleanup(error, 2);
-  const message =
-    reported instanceof Error
-      ? redactLocalPaths(reported.message)
-      : "Unknown evaluator sidecar error.";
+  const message = formatPublicFailureMessage(
+    reported,
+    "Unknown evaluator sidecar error.",
+  );
   console.error(`Evaluator sidecar generation failed: ${message}`);
   process.exitCode = findCleanupTerminationError(reported)?.exitCode ?? 1;
 }).finally(() => {

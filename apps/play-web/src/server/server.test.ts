@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request as httpRequest } from "node:http";
+import { connect, type Socket } from "node:net";
 import {
   inspectPublicGameTrace,
   publicAuthorityLegalMoves,
@@ -36,6 +37,49 @@ afterEach(async () => {
 });
 
 describe("local browser play server", () => {
+  it("runs the default private search through the evaluator at the selected limits", async () => {
+    const fixture = await startDefaultSearchFixture();
+    const session = await browserSession(fixture.server);
+
+    const created = await postJson<PlayGameSnapshot>(
+      fixture.server,
+      session,
+      "/api/games",
+      { humanColor: "black", humanDrawbackId: "vegan", strengthId: "quick" },
+    );
+
+    expect(created.status).toBe(201);
+    expect(fixture.evaluate).toHaveBeenCalled();
+    expect(fixture.engineTurns).toEqual([{
+      evaluatorId: fixture.evaluator.id,
+      maxDepth: 1,
+      maxNodes: 5_000,
+    }]);
+    expect(created.body.strength).toMatchObject({
+      id: "quick",
+      label: "Quick",
+      maxDepth: 1,
+      maxNodes: 5_000,
+    });
+    expect(created.body.observation).toMatchObject({
+      ply: 1,
+      turn: "black",
+    });
+    expect(created.body.moves).toHaveLength(1);
+    const engineMove = created.body.moves[0];
+    if (engineMove === undefined) {
+      throw new Error("Expected the default search to commit one engine move.");
+    }
+    expect(engineMove).toMatchObject({ ply: 1, color: "white" });
+    expect(created.body.observation.lastMove).toEqual({
+      from: engineMove.from,
+      to: engineMove.to,
+      ...(engineMove.promotion === undefined
+        ? {}
+        : { promotion: engineMove.promotion }),
+    });
+  });
+
   it("routes a move through the real facade with the exact selected limits", async () => {
     const captured: PlayerPrivatePlaySearchRequest[] = [];
     const search: PlayerPrivatePlaySearch = (request) => {
@@ -308,6 +352,45 @@ describe("local browser play server", () => {
     expect(fixture.closeEvaluator).toHaveBeenCalledOnce();
   });
 
+  it("force-closes an unfinished request body before evaluator cleanup", async () => {
+    const fixture = await startFixture((request) =>
+      Promise.resolve(chooseFirstLegal(request)));
+    const session = await browserSession(fixture.server);
+    const socket = connect({
+      host: fixture.server.host,
+      port: fixture.server.port,
+    });
+    socket.on("error", () => {
+      // Forced connection shutdown may surface ECONNRESET on the raw client.
+    });
+    try {
+      await socketConnected(socket);
+      const continued = waitForContinue(socket);
+      socket.write([
+        "POST /api/games HTTP/1.1",
+        `Host: ${fixture.server.host}:${String(fixture.server.port)}`,
+        `Origin: ${session.origin}`,
+        `Cookie: ${session.cookie}`,
+        "Content-Type: application/json",
+        "Content-Length: 128",
+        "Expect: 100-continue",
+        "Connection: keep-alive",
+        "",
+        "",
+      ].join("\r\n"));
+      await continued;
+      socket.write("{");
+      const disconnected = socketDisconnected(socket);
+
+      await settleWithin(fixture.server.close(), 1_000);
+      await disconnected;
+
+      expect(fixture.closeEvaluator).toHaveBeenCalledOnce();
+    } finally {
+      socket.destroy();
+    }
+  });
+
   it("retries incomplete evaluator cleanup through the same owner only", async () => {
     let attempts = 0;
     const fixture = await startFixture(
@@ -377,6 +460,66 @@ async function startFixture(
   });
   openServers.push(server);
   return { server, evaluator, closeEvaluator };
+}
+
+async function startDefaultSearchFixture(): Promise<{
+  readonly server: StartedPlayWebServer;
+  readonly evaluator: OwnedNodeUciLeafEvaluator;
+  readonly evaluate: ReturnType<typeof vi.fn>;
+  readonly engineTurns: Array<{
+    readonly evaluatorId: string;
+    readonly maxDepth: number;
+    readonly maxNodes: number;
+  }>;
+}> {
+  const staticRoot = await mkdtemp(join(tmpdir(), "drawback-play-web-default-search-"));
+  tempRoots.push(staticRoot);
+  await writeFile(join(staticRoot, "index.html"), "<!doctype html><title>play</title>");
+  const evaluate = vi.fn(() => Promise.resolve(0));
+  const evaluator: OwnedNodeUciLeafEvaluator = {
+    id: "test-default-search-evaluator",
+    evaluate,
+    close: () => Promise.resolve(),
+  };
+  const engineTurns: Array<{
+    readonly evaluatorId: string;
+    readonly maxDepth: number;
+    readonly maxNodes: number;
+  }> = [];
+  let token = 0;
+  const server = await startPlayWebServer({
+    port: 0,
+    staticRoot,
+    evaluator,
+    evaluatorMetadata: evaluatorMetadata(),
+    application: {
+      createGame: (options) => {
+        const game = PlayerPrivatePlayGame.create({
+          ...options,
+          engineDrawbackId: "vegan",
+        });
+        const playEngineTurn = game.playEngineTurn.bind(game);
+        vi.spyOn(game, "playEngineTurn").mockImplementation(
+          (requestedEvaluator, limits) => {
+            engineTurns.push({
+              evaluatorId: requestedEvaluator.id,
+              maxDepth: limits.maxDepth,
+              maxNodes: limits.maxNodes,
+            });
+            return playEngineTurn(requestedEvaluator, limits);
+          },
+        );
+        return game;
+      },
+      generateSeed: () => 92,
+      generateToken: (prefix) => {
+        token += 1;
+        return `${prefix.charAt(0)}${String(token)}`.padEnd(32, prefix.charAt(0));
+      },
+    },
+  });
+  openServers.push(server);
+  return { server, evaluator, evaluate, engineTurns };
 }
 
 async function browserSession(server: StartedPlayWebServer): Promise<{
@@ -515,4 +658,83 @@ function rawHostStatus(
     request.once("error", reject);
     request.end();
   });
+}
+
+function socketConnected(socket: Socket): Promise<void> {
+  if (socket.readyState === "open") {
+    return Promise.resolve();
+  }
+  return new Promise((resolvePromise, reject) => {
+    const cleanup = (): void => {
+      socket.off("connect", onConnect);
+      socket.off("error", onError);
+    };
+    const onConnect = (): void => {
+      cleanup();
+      resolvePromise();
+    };
+    const onError = (error: Error): void => {
+      cleanup();
+      reject(error);
+    };
+    socket.once("connect", onConnect);
+    socket.once("error", onError);
+  });
+}
+
+function waitForContinue(socket: Socket): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    let response = "";
+    const cleanup = (): void => {
+      socket.off("data", onData);
+      socket.off("error", onError);
+      socket.off("close", onClose);
+    };
+    const onData = (chunk: Buffer): void => {
+      response += chunk.toString("ascii");
+      if (response.includes("100 Continue")) {
+        cleanup();
+        resolvePromise();
+      }
+    };
+    const onError = (error: Error): void => {
+      cleanup();
+      reject(error);
+    };
+    const onClose = (): void => {
+      cleanup();
+      reject(new Error("Partial request closed before HTTP 100 Continue."));
+    };
+    socket.on("data", onData);
+    socket.once("error", onError);
+    socket.once("close", onClose);
+  });
+}
+
+function socketDisconnected(socket: Socket): Promise<void> {
+  if (socket.destroyed) {
+    return Promise.resolve();
+  }
+  return new Promise((resolvePromise) => {
+    socket.once("close", () => { resolvePromise(); });
+  });
+}
+
+async function settleWithin(
+  operation: Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`Server cleanup exceeded ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+  });
+  try {
+    await Promise.race([operation, deadline]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  }
 }

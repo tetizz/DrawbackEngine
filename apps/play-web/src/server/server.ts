@@ -318,6 +318,10 @@ function closeServer(server: Server): Promise<void> {
       }
     });
     server.closeIdleConnections();
+    // `server.close()` stops admission first. Active connections, including a
+    // request with an unfinished body, must then be destroyed so shutdown and
+    // owned evaluator cleanup cannot wait forever for request EOF.
+    server.closeAllConnections();
   });
 }
 

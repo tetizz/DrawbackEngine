@@ -191,15 +191,18 @@ export function parseSchema9PlayerPrivateCliArguments(
 export async function verifiedCleanEngineCommit(
   suppliedRepository: string,
   executingRepository = executingEngineRepository(),
+  signal?: AbortSignal,
 ): Promise<string> {
+  throwIfAborted(signal);
   const supplied = await realpath(suppliedRepository);
   const executing = await realpath(executingRepository);
+  throwIfAborted(signal);
   if (relative(executing, supplied) !== "") {
     throw new TypeError(
       "Supplied Engine repository is not the executing source checkout.",
     );
   }
-  const head = (await git(supplied, ["rev-parse", "HEAD"])).trim();
+  const head = (await git(supplied, ["rev-parse", "HEAD"], signal)).trim();
   if (!FULL_GIT_COMMIT.test(head)) {
     throw new TypeError("Executing Engine commit is invalid.");
   }
@@ -208,7 +211,7 @@ export async function verifiedCleanEngineCommit(
     "--porcelain=v1",
     "--untracked-files=all",
     "--ignore-submodules=none",
-  ]);
+  ], signal);
   if (status.length !== 0) {
     throw new TypeError("Executing Engine repository is not clean.");
   }
@@ -216,11 +219,11 @@ export async function verifiedCleanEngineCommit(
     "for-each-ref",
     "--format=%(refname)",
     "refs/replace",
-  ]);
+  ], signal);
   if (replacements.trim().length !== 0) {
     throw new TypeError("Executing Engine repository contains replace refs.");
   }
-  const tagged = await git(supplied, ["ls-files", "-v", "-z"]);
+  const tagged = await git(supplied, ["ls-files", "-v", "-z"], signal);
   for (const entry of tagged.split("\0")) {
     const tag = entry[0];
     if (tag === "S" || (tag !== undefined && /^[a-z]$/u.test(tag))) {
@@ -262,6 +265,7 @@ export async function createSchema9PlayerPrivateBundle(
     await assertSameProducerCommit(
       options.producerEngineCommit,
       dependencies.verifyProducerCommit,
+      options.signal,
     );
     await assertSameProducerRuntimeIdentity(
       options.producerRuntimeIdentity,
@@ -339,6 +343,7 @@ export async function createSchema9PlayerPrivateBundle(
     await assertSameProducerCommit(
       options.producerEngineCommit,
       dependencies.verifyProducerCommit,
+      options.signal,
     );
     await assertSameProducerRuntimeIdentity(
       options.producerRuntimeIdentity,
@@ -376,6 +381,7 @@ export async function createSchema9PlayerPrivateBundle(
     await assertSameProducerCommit(
       options.producerEngineCommit,
       dependencies.verifyProducerCommit,
+      options.signal,
     );
     await assertSameProducerRuntimeIdentity(
       options.producerRuntimeIdentity,
@@ -704,12 +710,15 @@ export async function removeOwnedSchema9Directory(
 async function assertSameProducerCommit(
   expected: string,
   suppliedVerifier: (() => Promise<string>) | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
   const verify = suppliedVerifier ?? (() => {
     const repository = executingEngineRepository();
-    return verifiedCleanEngineCommit(repository, repository);
+    return verifiedCleanEngineCommit(repository, repository, signal);
   });
+  throwIfAborted(signal);
   const actual = await verify();
+  throwIfAborted(signal);
   if (actual !== expected) {
     throw new Error("Executing Engine commit changed during generation.");
   }
@@ -867,9 +876,14 @@ function isNodeError(error: unknown, code: string): boolean {
     && error.code === code;
 }
 
-function git(repository: string, arguments_: readonly string[]): Promise<string> {
+function git(
+  repository: string,
+  arguments_: readonly string[],
+  signal?: AbortSignal,
+): Promise<string> {
   return runSchema9AuthenticatedGit(
     ["--no-replace-objects", "-C", repository, ...arguments_],
     repository,
+    signal,
   );
 }

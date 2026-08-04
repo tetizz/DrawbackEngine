@@ -156,11 +156,26 @@ await runSchema9PlayerPrivateCli({
       if (options.signal?.aborted === true) {
         throw options.signal.reason;
       }
-      await new Promise((_, reject) => {
-        options.signal?.addEventListener("abort", () => {
-          reject(options.signal.reason);
-        }, { once: true });
-      });
+      const keepAlive = setInterval(() => undefined, 1_000);
+      try {
+        await new Promise((_, reject) => {
+          const signal = options.signal;
+          if (signal === undefined) {
+            reject(new Error("lifecycle test requires an abort signal"));
+            return;
+          }
+          const onAbort = () => {
+            reject(signal.reason);
+          };
+          signal.addEventListener("abort", onAbort, { once: true });
+          if (signal.aborted) {
+            signal.removeEventListener("abort", onAbort);
+            reject(signal.reason);
+          }
+        });
+      } finally {
+        clearInterval(keepAlive);
+      }
       return {
         split: "train",
         games: 25,

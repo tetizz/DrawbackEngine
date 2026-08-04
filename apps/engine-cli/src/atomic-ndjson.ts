@@ -88,10 +88,17 @@ export async function writeNdjsonFileAtomicNoClobber(
     flags: "wx",
     mode: 0o600,
   });
+  const openState = { opened: false };
+  stream.once("open", () => {
+    openState.opened = true;
+  });
   const completion = finished(stream);
+  let streamFailure: unknown;
   // Observe open/write failures immediately. The same promise is awaited below
   // so the original error still reaches the caller without becoming unhandled.
-  void completion.catch(() => undefined);
+  void completion.catch((error: unknown) => {
+    streamFailure = error;
+  });
   const hash = createHash("sha256");
   let records = 0;
   let bytes = 0;
@@ -129,7 +136,15 @@ export async function writeNdjsonFileAtomicNoClobber(
     };
   } catch (error: unknown) {
     stream.destroy();
-    await completion.catch(() => undefined);
+    await completion.catch((completionError: unknown) => {
+      streamFailure ??= completionError;
+    });
+    if (!openState.opened && isNodeError(streamFailure, "ENAMETOOLONG")) {
+      // The filesystem rejected the initial open before this process ever
+      // owned a file. Preserve that actionable failure without claiming that
+      // an impossible temporary path still contains private bytes.
+      throw error;
+    }
     return await throwAfterPrivateFileCleanup(
       error,
       finalLinkCreated
@@ -205,6 +220,13 @@ async function throwAfterPrivateFileCleanup(
     );
   }
   throw originalFailure;
+}
+
+function isNodeError(error: unknown, code: string): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && error.code === code;
 }
 
 async function removePrivateFiles(

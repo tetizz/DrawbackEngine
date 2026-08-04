@@ -11,6 +11,21 @@ type RetainedCleanupOwner =
   | IncompleteSameOwnerCleanupError
   | RetainedFileCleanupError;
 
+export class RetainedCleanupReportError extends AggregateError {
+  public constructor(
+    errors: readonly unknown[],
+    public readonly cleanupComplete: boolean,
+  ) {
+    super(
+      errors,
+      cleanupComplete
+        ? "Player-private generation failed after retained cleanup completed."
+        : "Player-private generation failed and retained cleanup remains incomplete.",
+    );
+    this.name = "RetainedCleanupReportError";
+  }
+}
+
 export async function retryRetainedCleanup(
   error: unknown,
   attempts = 2,
@@ -38,11 +53,9 @@ export async function retryRetainedCleanup(
   );
   const incomplete = outcomes.some((outcome) => !outcome.complete)
     || newlyRetainedOwners.length > 0;
-  return new AggregateError(
+  return new RetainedCleanupReportError(
     [error, ...cleanupFailures],
-    incomplete
-      ? "Player-private generation failed and retained cleanup remains incomplete."
-      : "Player-private generation failed after retained cleanup completed.",
+    !incomplete,
   );
 }
 

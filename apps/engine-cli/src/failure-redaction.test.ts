@@ -3,8 +3,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  IncompleteSameOwnerCleanupError,
+} from "@drawbackengine/chess-evaluator";
+import {
+  PlayerPrivateWorkerPoolCleanupError,
+} from "@drawbackengine/simulation-arena";
 import { describe, expect, it } from "vitest";
-import { redactLocalPaths } from "./failure-redaction.js";
+import { RetainedFileCleanupError } from "./atomic-ndjson.js";
+import {
+  formatPublicFailureMessage,
+  redactLocalPaths,
+} from "./failure-redaction.js";
+import { RetainedCleanupReportError } from "./retained-cleanup.js";
 
 describe("CLI failure redaction", () => {
   it.each([
@@ -28,6 +39,87 @@ describe("CLI failure redaction", () => {
     expect(redactLocalPaths(message)).toBe(message);
   });
 
+  it.each([
+    [true, "retained cleanup completed"],
+    [false, "retained cleanup remains incomplete"],
+  ] as const)(
+    "preserves a redacted retained-cleanup cause (complete=%s)",
+    (cleanupComplete, expectedStatus) => {
+      const privatePath = "C:\\private\\training\\output.ndjson";
+      const original = new Error(`Opening ${privatePath} failed.`);
+      const owner = new RetainedFileCleanupError(
+        [original],
+        [privatePath],
+      );
+      const report = new RetainedCleanupReportError(
+        [owner],
+        cleanupComplete,
+      );
+
+      const message = formatPublicFailureMessage(report, "Unknown failure.");
+
+      expect(message).toContain("Opening <local-path> failed.");
+      expect(message).toContain(expectedStatus);
+      expect(message).not.toContain(privatePath);
+    },
+  );
+
+  it("retains status for every direct cleanup-owner failure", () => {
+    const privatePath = "C:\\private\\training\\output.ndjson";
+    const original = new Error(`Opening ${privatePath} failed.`);
+    const wrappers = [
+      {
+        error: new RetainedFileCleanupError([original], [privatePath]),
+        status: "Private NDJSON file cleanup remains incomplete.",
+      },
+      {
+        error: new IncompleteSameOwnerCleanupError(
+          [original],
+          "Engine cleanup remains incomplete.",
+          () => Promise.resolve(),
+        ),
+        status: "Engine cleanup remains incomplete.",
+      },
+      {
+        error: new PlayerPrivateWorkerPoolCleanupError(
+          [original],
+          "Worker pool cleanup remains incomplete.",
+          () => Promise.resolve(),
+          () => ({
+            configuredWorkers: 1,
+            launches: 1,
+            activeWorkers: 1,
+            peakActiveWorkers: 1,
+            completedTasks: 0,
+            retriedTasks: 0,
+          }),
+        ),
+        status: "Worker pool cleanup remains incomplete.",
+      },
+    ] as const;
+
+    for (const { error, status } of wrappers) {
+      const message = formatPublicFailureMessage(error, "Unknown failure.");
+      expect(message).toContain("Opening <local-path> failed.");
+      expect(message).toContain(status);
+      expect(message).not.toContain(privatePath);
+    }
+  });
+
+  it("finds an actionable cause through a retained-wrapper cycle", () => {
+    const privatePath = "C:\\private\\training\\cycle.ndjson";
+    const original = new Error(`Opening ${privatePath} failed.`);
+    const owner = new RetainedFileCleanupError([], [privatePath]);
+    const report = new RetainedCleanupReportError([owner], false);
+    (owner.errors as unknown[]).push(report, original);
+
+    const message = formatPublicFailureMessage(report, "Unknown failure.");
+
+    expect(message).toContain("Opening <local-path> failed.");
+    expect(message).toContain("retained cleanup remains incomplete");
+    expect(message).not.toContain(privatePath);
+  });
+
   it("reports an asynchronous private-output open failure as path-free JSON", async () => {
     const directory = await mkdtemp(join(tmpdir(), "drawback-cli-redaction-"));
     const privateFragment = `private-owner-${"x".repeat(300)}.ndjson`;
@@ -47,6 +139,7 @@ describe("CLI failure redaction", () => {
       expect(record["kind"]).toBe("player-private-failure");
       expect(record["message"]).toBeTypeOf("string");
       expect(record["message"]).toContain("<local-path>");
+      expect(record["message"]).not.toContain("cleanup remains incomplete");
       expect(result.stderr).not.toContain(directory);
       expect(result.stderr).not.toContain(privateFragment);
       expect(result.stderr).not.toMatch(/uncaught|\n\s*at\s/u);

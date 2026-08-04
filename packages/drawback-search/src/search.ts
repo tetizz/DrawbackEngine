@@ -266,6 +266,18 @@ async function evaluateLeaf(
   extendOptionalCaptures = true,
 ): Promise<NodeResult> {
   const legalMoves = suppliedLegalMoves ?? orderedMoves(session.legalMoves());
+  const terminal = terminalScore(session.result, state.rootColor, ply);
+  if (terminal !== null) {
+    return { score: terminal, principalVariation: [] };
+  }
+  if (session.publicPositionSnapshot().kingPassant !== null) {
+    return evaluateKingPassantExtension(
+      session,
+      ply,
+      state,
+      legalMoves,
+    );
+  }
   const baseline = await evaluateLeafBaseline(
     session,
     ply,
@@ -329,6 +341,80 @@ async function evaluateLeaf(
     throw new Error("Capture extension produced no selectable continuation.");
   }
   return selected;
+}
+
+/**
+ * Consumes the authority's one-reply castling king-passant state before a
+ * static evaluator is called. FEN cannot encode this right, so an exact
+ * drawback-legal reply must advance the session first.
+ */
+async function evaluateKingPassantExtension(
+  session: OmniscientSession,
+  ply: number,
+  state: SearchState,
+  legalMoves: readonly ChessMove[],
+): Promise<NodeResult> {
+  throwIfAborted(state.limits.signal);
+  const moves = orderedMoves(legalMoves);
+  if (state.nodes + moves.length > state.limits.maxNodes) {
+    state.truncated = true;
+    return kingPassantBudgetFallback(moves, ply);
+  }
+
+  const maximizing = session.turn === state.rootColor;
+  let selected: NodeResult | null = null;
+  for (const move of moves) {
+    throwIfAborted(state.limits.signal);
+    if (state.nodes >= state.limits.maxNodes) {
+      state.truncated = true;
+      return kingPassantBudgetFallback(moves, ply);
+    }
+    const child = session.fork();
+    applySearchMove(child, move);
+    state.nodes += 1;
+    const childResult = await evaluateLeaf(
+      child,
+      ply + 1,
+      state,
+      undefined,
+      false,
+    );
+    if (state.truncated) {
+      return kingPassantBudgetFallback(moves, ply);
+    }
+    const candidate: NodeResult = {
+      score: childResult.score,
+      principalVariation: [move, ...childResult.principalVariation],
+    };
+    if (
+      selected === null
+      || improvesTacticalResult(candidate, selected, maximizing)
+    ) {
+      selected = candidate;
+    }
+  }
+  if (selected === null) {
+    throw new Error("King-passant extension produced no legal continuation.");
+  }
+  return selected;
+}
+
+/**
+ * An unvisited king-passant reply cannot be replaced by a static FEN score.
+ * Preserve a legal deterministic PV and a fail-closed root-loss bound.
+ */
+function kingPassantBudgetFallback(
+  legalMoves: readonly ChessMove[],
+  ply: number,
+): NodeResult {
+  const move = legalMoves[0];
+  if (move === undefined) {
+    throw new Error("King-passant fallback requires a legal reply.");
+  }
+  return {
+    score: -TERMINAL_SCORE + ply + 1,
+    principalVariation: [move],
+  };
 }
 
 /**

@@ -10,7 +10,7 @@ import {
 import {
   attestSchema9ProducerRuntime,
 } from "./schema9-runtime-identity.js";
-import { redactLocalPaths } from "./failure-redaction.js";
+import { formatPublicFailureMessage } from "./failure-redaction.js";
 import { writeJsonLine } from "./json-line-writer.js";
 import { retryRetainedCleanup } from "./retained-cleanup.js";
 import {
@@ -51,6 +51,8 @@ export async function runSchema9PlayerPrivateCli(
       ?? verifiedCleanEngineCommit;
     const producerEngineCommit = await verifyCleanCommit(
       options.engineRepository,
+      undefined,
+      termination.signal,
     );
     const attestProducerRuntime = dependencies.attestProducerRuntime
       ?? attestSchema9ProducerRuntime;
@@ -92,10 +94,9 @@ export async function runSchema9PlayerPrivateCli(
     });
   } catch (error: unknown) {
     const reported = await retryRetainedCleanup(error, 2);
-    const message = redactLocalPaths(
-      reported instanceof Error
-        ? reported.message
-        : "Unknown schema-9 generation error.",
+    const message = formatPublicFailureMessage(
+      reported,
+      "Unknown schema-9 generation error.",
     );
     await writeJsonLine(stderr, {
       kind: "schema9-player-private-failure",
