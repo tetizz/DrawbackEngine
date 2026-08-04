@@ -68,6 +68,14 @@ const COMMIT = "a".repeat(40);
 const TYPESCRIPT_COMPILER = createRequire(import.meta.url).resolve(
   "typescript/lib/tsc.js",
 );
+const BUILD_ARTIFACT_NORMALIZER = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "scripts",
+  "normalize-built-artifacts.mjs",
+);
 
 describe("schema-9 producer runtime identity", () => {
   it("matches the cross-repository aggregate golden digest", () => {
@@ -138,16 +146,20 @@ describe("schema-9 producer runtime identity", () => {
       await createRuntimeFixture(executing, "\n");
       await createRuntimeFixture(rebuilt, "\n");
       await mkdir(scratch);
-      const executingArtifact = await compileRuntimeIdentityFixture(
+      const executingBuild = await compileRuntimeIdentityFixture(
         join(root, "executing-source"),
         "\r\n",
         1,
       );
-      const rebuiltArtifact = await compileRuntimeIdentityFixture(
+      const rebuiltBuild = await compileRuntimeIdentityFixture(
         join(root, "rebuilt-source"),
         "\n",
         1,
       );
+      expect(executingBuild.raw.includes(13)).toBe(true);
+      expect(executingBuild.raw.equals(rebuiltBuild.raw)).toBe(false);
+      const executingArtifact = executingBuild.normalized;
+      const rebuiltArtifact = rebuiltBuild.normalized;
       expect(executingArtifact.equals(rebuiltArtifact)).toBe(true);
       expect(executingArtifact.includes(13)).toBe(false);
       await writeFile(
@@ -176,11 +188,11 @@ describe("schema-9 producer runtime identity", () => {
         await computeSchema9ProducerRuntimeIdentity(rebuilt, RUNTIME),
       );
 
-      const changedArtifact = await compileRuntimeIdentityFixture(
+      const changedArtifact = (await compileRuntimeIdentityFixture(
         join(root, "changed-source"),
         "\n",
         2,
-      );
+      )).normalized;
       expect(changedArtifact.equals(rebuiltArtifact)).toBe(false);
       await writeFile(
         join(executing, "apps", "engine-cli", "dist", "runtime-build.js"),
@@ -935,8 +947,9 @@ async function compileRuntimeIdentityFixture(
   projectRoot: string,
   lineEnding: "\n" | "\r\n",
   semanticValue: number,
-): Promise<Buffer> {
-  const sourceRoot = join(projectRoot, "src");
+): Promise<Readonly<{ raw: Buffer; normalized: Buffer }>> {
+  const packageRoot = join(projectRoot, "apps", "runtime-fixture");
+  const sourceRoot = join(packageRoot, "src");
   await mkdir(sourceRoot, { recursive: true });
   await writeFile(
     join(projectRoot, "package.json"),
@@ -944,7 +957,7 @@ async function compileRuntimeIdentityFixture(
     { encoding: "utf8", flag: "wx" },
   );
   await writeFile(
-    join(projectRoot, "tsconfig.json"),
+    join(packageRoot, "tsconfig.json"),
     JSON.stringify({
       extends: join(
         dirname(fileURLToPath(import.meta.url)),
@@ -969,6 +982,8 @@ async function compileRuntimeIdentityFixture(
     [
       "// Runtime identity source checkout fixture.",
       `export const runtimeIdentityFixture = ${String(semanticValue)};`,
+      "export const embeddedLineEnding = `first",
+      "second`;",
       "",
     ].join(lineEnding),
     { encoding: "utf8", flag: "wx" },
@@ -976,7 +991,7 @@ async function compileRuntimeIdentityFixture(
   await new Promise<void>((resolvePromise, rejectPromise) => {
     execFile(
       process.execPath,
-      [TYPESCRIPT_COMPILER, "-p", join(projectRoot, "tsconfig.json")],
+      [TYPESCRIPT_COMPILER, "-p", join(packageRoot, "tsconfig.json")],
       { windowsHide: true },
       (error, stdout, stderr) => {
         if (error === null) {
@@ -990,7 +1005,26 @@ async function compileRuntimeIdentityFixture(
       },
     );
   });
-  return readFile(join(projectRoot, "dist", "runtime-build.js"));
+  const artifact = join(packageRoot, "dist", "runtime-build.js");
+  const raw = await readFile(artifact);
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    execFile(
+      process.execPath,
+      [BUILD_ARTIFACT_NORMALIZER, projectRoot],
+      { windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error === null) {
+          resolvePromise();
+          return;
+        }
+        rejectPromise(new Error(
+          `Build artifact normalization failed: ${stdout}${stderr}`,
+          { cause: error },
+        ));
+      },
+    );
+  });
+  return Object.freeze({ raw, normalized: await readFile(artifact) });
 }
 
 async function createRuntimeFixture(

@@ -941,8 +941,6 @@ async function prepareFreshSnapshot(
     [
       pnpm.path,
       "--config.ignore-scripts=true",
-      "-r",
-      "--if-present",
       "run",
       "build",
     ],

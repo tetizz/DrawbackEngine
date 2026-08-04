@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm -r --if-present build",
+    "build": "pnpm -r --if-present build && node scripts/normalize-built-artifacts.mjs",
     "typecheck": "pnpm build && pnpm -r --if-present typecheck",
     "lint": "eslint . --max-warnings 0",
     "test": "pnpm build && vitest run",
