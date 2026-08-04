@@ -81,6 +81,7 @@ const EXTERNAL_DEPENDENCY_CYCLE_FORMAT =
   "drawbackengine-schema9-external-dependency-cycle/v1";
 const EXTERNAL_OPTIONAL_DEPENDENCY_FORMAT =
   "drawbackengine-schema9-optional-dependency/v1";
+const WINDOWS_SYSTEM_ROOT_ALIAS = String.raw`\\?\GLOBALROOT\SystemRoot`;
 
 interface AuthenticatedPnpmEntrypoint {
   readonly path: string;
@@ -961,17 +962,107 @@ export async function runSchema9AuthenticatedGit(
   cwd: string,
   signal?: AbortSignal,
 ): Promise<string> {
+  const invocation = hardenedGitInvocation(arguments_);
   const executable = await authenticatedGitExecutable(signal);
   try {
+    if (invocation.command === "checkout" || invocation.command === "status") {
+      await assertNoGitFilterProcesses(executable, invocation, cwd, signal);
+    }
     return await runCommand(
       executable.path,
-      arguments_,
+      invocation.arguments,
       cwd,
       executable.environment,
       signal,
     );
   } finally {
     await assertAuthenticatedGitUnchanged(executable);
+  }
+}
+
+interface HardenedGitInvocation {
+  readonly arguments: readonly string[];
+  readonly globalArguments: readonly string[];
+  readonly command: string;
+}
+
+function hardenedGitInvocation(
+  arguments_: readonly string[],
+): HardenedGitInvocation {
+  let commandIndex = 0;
+  while (commandIndex < arguments_.length) {
+    const argument = arguments_[commandIndex];
+    if (argument === "--no-pager" || argument === "--no-replace-objects") {
+      commandIndex += 1;
+      continue;
+    }
+    if (argument === "-C" || argument === "-c") {
+      if (arguments_[commandIndex + 1] === undefined) {
+        throw new TypeError(`Authenticated Git option ${argument} is incomplete.`);
+      }
+      commandIndex += 2;
+      continue;
+    }
+    if (argument?.startsWith("-") === true) {
+      throw new TypeError(
+        `Authenticated Git global option is unsupported: ${argument}.`,
+      );
+    }
+    break;
+  }
+  const command = arguments_[commandIndex];
+  if (command === undefined) {
+    throw new TypeError("Authenticated Git command is missing.");
+  }
+  const nullDevice = process.platform === "win32" ? "NUL" : "/dev/null";
+  // Keep these after every caller-supplied global option: each setting disables
+  // a Git configuration surface that can otherwise launch another process.
+  const globalArguments = Object.freeze([
+    ...arguments_.slice(0, commandIndex),
+    "--no-pager",
+    "-c",
+    "credential.helper=",
+    "-c",
+    `core.hooksPath=${nullDevice}`,
+    "-c",
+    "core.fsmonitor=false",
+  ]);
+  return Object.freeze({
+    arguments: Object.freeze([
+      ...globalArguments,
+      ...arguments_.slice(commandIndex),
+    ]),
+    globalArguments,
+    command,
+  });
+}
+
+async function assertNoGitFilterProcesses(
+  executable: AuthenticatedGitExecutable,
+  invocation: HardenedGitInvocation,
+  cwd: string,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const names = await runCommand(
+    executable.path,
+    [
+      ...invocation.globalArguments,
+      "config",
+      "--null",
+      "--name-only",
+      "--includes",
+      "--list",
+    ],
+    cwd,
+    executable.environment,
+    signal,
+  );
+  for (const name of names.split("\0")) {
+    if (/^filter\..+\.(?:clean|smudge|process)$/iu.test(name)) {
+      throw new TypeError(
+        "Authenticated Git refuses process-bearing filter configuration.",
+      );
+    }
   }
 }
 
@@ -982,13 +1073,7 @@ async function authenticatedGitExecutable(
   let candidate: string;
   let systemRoot: string | undefined;
   if (process.platform === "win32") {
-    const configuredSystemRoot = process.env["SystemRoot"]?.trim();
-    if (configuredSystemRoot === undefined || !isAbsolute(configuredSystemRoot)) {
-      throw new TypeError(
-        "Schema-9 Git authentication requires an absolute SystemRoot.",
-      );
-    }
-    systemRoot = await realpath(configuredSystemRoot);
+    ({ root: systemRoot } = await authenticatedWindowsSystemDirectories());
     const programFiles = await realpath(join(parse(systemRoot).root, "Program Files"));
     candidate = await realpath(join(programFiles, "Git", "cmd", "git.exe"));
     const child = relative(programFiles, candidate);
@@ -1047,7 +1132,7 @@ async function authenticatedGitExecutable(
   environment["GIT_CONFIG_GLOBAL"] = nullDevice;
   environment["GIT_CONFIG_NOSYSTEM"] = "1";
   environment["GIT_OPTIONAL_LOCKS"] = "0";
-  environment["GIT_PAGER"] = "cat";
+  environment["GIT_PAGER"] = "";
   environment["GIT_TERMINAL_PROMPT"] = "0";
   environment["LC_ALL"] = "C";
   return Object.freeze({
@@ -1312,7 +1397,11 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
       execFile(
         taskkill.path,
         ["/PID", String(pid), "/T", "/F"],
-        { windowsHide: true, timeout: 10_000 },
+        {
+          env: taskkill.environment,
+          windowsHide: true,
+          timeout: 10_000,
+        },
         (error) => {
           void assertAuthenticatedSystemToolUnchanged(taskkill)
             .then(() => {
@@ -1348,25 +1437,21 @@ interface AuthenticatedSystemTool {
   readonly ino: bigint;
   readonly size: bigint;
   readonly mtimeNs: bigint;
+  readonly ctimeNs: bigint;
+  readonly environment: NodeJS.ProcessEnv;
 }
 
 async function authenticatedWindowsTaskkill(): Promise<AuthenticatedSystemTool> {
-  const systemRoot = process.env["SystemRoot"]?.trim();
-  if (systemRoot === undefined || !isAbsolute(systemRoot)) {
-    throw new TypeError(
-      "Windows Schema-9 cleanup requires an absolute SystemRoot.",
-    );
-  }
-  const canonicalRoot = await realpath(systemRoot);
-  const path = await realpath(join(canonicalRoot, "System32", "taskkill.exe"));
-  const child = relative(canonicalRoot, path);
+  const { root, system32 } = await authenticatedWindowsSystemDirectories();
+  const path = await realpath(join(system32, "taskkill.exe"));
+  const child = relative(system32, path);
   if (
     child === ""
     || child === ".."
     || child.startsWith(`..${sep}`)
     || isAbsolute(child)
   ) {
-    throw new TypeError("Windows taskkill escaped the authenticated system root.");
+    throw new TypeError("Windows taskkill escaped the OS system directory.");
   }
   const metadata = await lstat(path, { bigint: true });
   if (!metadata.isFile()) {
@@ -1378,7 +1463,41 @@ async function authenticatedWindowsTaskkill(): Promise<AuthenticatedSystemTool> 
     ino: metadata.ino,
     size: metadata.size,
     mtimeNs: metadata.mtimeNs,
+    ctimeNs: metadata.ctimeNs,
+    environment: Object.freeze({
+      SystemRoot: root,
+      WINDIR: root,
+      ComSpec: join(system32, "cmd.exe"),
+      PATH: system32,
+      PATHEXT: ".COM;.EXE;.BAT;.CMD",
+    }),
   });
+}
+
+async function authenticatedWindowsSystemDirectories(): Promise<Readonly<{
+  root: string;
+  system32: string;
+}>> {
+  if (process.platform !== "win32") {
+    throw new TypeError("Windows system directories require Windows.");
+  }
+  const root = await realpath(WINDOWS_SYSTEM_ROOT_ALIAS);
+  const system32 = await realpath(join(WINDOWS_SYSTEM_ROOT_ALIAS, "System32"));
+  const child = relative(root, system32);
+  if (
+    !isAbsolute(root)
+    || child.toLocaleLowerCase("en-US") !== "system32"
+  ) {
+    throw new TypeError("The OS system-directory alias resolved unexpectedly.");
+  }
+  const [rootMetadata, system32Metadata] = await Promise.all([
+    lstat(root),
+    lstat(system32),
+  ]);
+  if (!rootMetadata.isDirectory() || !system32Metadata.isDirectory()) {
+    throw new TypeError("The OS system-directory alias is not a directory.");
+  }
+  return Object.freeze({ root, system32 });
 }
 
 async function assertAuthenticatedSystemToolUnchanged(
@@ -1391,6 +1510,7 @@ async function assertAuthenticatedSystemToolUnchanged(
     || actual.ino !== expected.ino
     || actual.size !== expected.size
     || actual.mtimeNs !== expected.mtimeNs
+    || actual.ctimeNs !== expected.ctimeNs
   ) {
     throw new Error("Authenticated Windows cleanup tool changed during use.");
   }

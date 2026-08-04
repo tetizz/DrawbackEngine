@@ -417,6 +417,41 @@ describe("schema-9 producer runtime identity", () => {
     }
   }, 20_000);
 
+  it.skipIf(process.platform !== "win32")(
+    "ignores a hostile SystemRoot when authenticating taskkill",
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), "schema9-taskkill-root-test-"));
+      const parentScript = join(root, "parent.mjs");
+      const pidFile = join(root, "grandchild.pid");
+      const previousSystemRoot = process.env["SystemRoot"];
+      const childEnvironment = { ...process.env };
+      let grandchildPid: number | undefined;
+      try {
+        await writeProcessTreeScript(parentScript);
+        process.env["SystemRoot"] = join(root, "attacker-windows");
+        await expect(runSchema9RuntimeCommandForTesting(
+          process.execPath,
+          [parentScript, pidFile],
+          root,
+          undefined,
+          1_000,
+          childEnvironment,
+        )).rejects.toThrow("time limit");
+        grandchildPid = await waitForPidFile(pidFile);
+        await expectProcessExit(grandchildPid);
+      } finally {
+        if (previousSystemRoot === undefined) {
+          delete process.env["SystemRoot"];
+        } else {
+          process.env["SystemRoot"] = previousSystemRoot;
+        }
+        bestEffortKillProcess(grandchildPid);
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
+
   it("settles after tree cleanup fails while a grandchild retains stdio", async () => {
     const root = await mkdtemp(join(tmpdir(), "schema9-runtime-tree-failure-"));
     const parentScript = join(root, "parent.mjs");

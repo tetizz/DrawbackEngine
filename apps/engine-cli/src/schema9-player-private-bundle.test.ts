@@ -29,7 +29,10 @@ import {
   verifiedCleanEngineCommit,
   type Schema9PlayerPrivateBundleDependencies,
 } from "./schema9-player-private-bundle.js";
-import { canonicalSchema9RuntimeJson } from "./schema9-runtime-identity.js";
+import {
+  canonicalSchema9RuntimeJson,
+  runSchema9AuthenticatedGit,
+} from "./schema9-runtime-identity.js";
 import type {
   PlayerPrivateBatchOptions,
   PlayerPrivateBatchResult,
@@ -603,6 +606,7 @@ describe("schema-9 producer provenance", () => {
     const shadow = join(root, "shadow");
     const previousPath = process.env["PATH"];
     const previousGitDirectory = process.env["GIT_DIR"];
+    const previousSystemRoot = process.env["SystemRoot"];
     try {
       await mkdir(repository);
       git(repository, ["init"]);
@@ -627,6 +631,7 @@ describe("schema-9 producer provenance", () => {
       }
       process.env["PATH"] = shadow;
       process.env["GIT_DIR"] = join(root, "attacker-git-dir");
+      process.env["SystemRoot"] = join(root, "attacker-windows");
 
       await expect(verifiedCleanEngineCommit(repository, repository))
         .resolves.toBe(commit);
@@ -641,6 +646,113 @@ describe("schema-9 producer provenance", () => {
       } else {
         process.env["GIT_DIR"] = previousGitDirectory;
       }
+      if (previousSystemRoot === undefined) {
+        delete process.env["SystemRoot"];
+      } else {
+        process.env["SystemRoot"] = previousSystemRoot;
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not execute a repository core.fsmonitor command", async () => {
+    const root = await mkdtemp(join(tmpdir(), "schema9-fsmonitor-test-"));
+    const repository = join(root, "repository");
+    const marker = join(root, "fsmonitor-executed.txt");
+    const monitor = join(root, "malicious.sh");
+    try {
+      await mkdir(repository);
+      git(repository, ["init"]);
+      git(repository, ["config", "user.name", "tetizz"]);
+      git(repository, [
+        "config",
+        "user.email",
+        "104690265+tetizz@users.noreply.github.com",
+      ]);
+      await writeFile(join(repository, "tracked.txt"), "one\n", "utf8");
+      git(repository, ["add", "tracked.txt"]);
+      git(repository, ["commit", "-m", "Fsmonitor test state"]);
+      const commit = git(repository, ["rev-parse", "HEAD"]).trim();
+      const shellMarker = marker.replaceAll("\\", "/");
+      const command = `#!/bin/sh\nprintf fsmonitor-executed > '${shellMarker}'\n`;
+      await writeFile(monitor, command, "utf8");
+      await chmod(monitor, 0o755);
+      git(repository, [
+        "config",
+        "core.fsmonitor",
+        monitor.replaceAll("\\", "/"),
+      ]);
+
+      git(repository, ["status", "--porcelain=v1"]);
+      await expect(access(marker)).resolves.toBeUndefined();
+      await rm(marker);
+
+      await runSchema9AuthenticatedGit(
+        [
+          "--no-replace-objects",
+          "-c",
+          `core.fsmonitor=${monitor.replaceAll("\\", "/")}`,
+          "-C",
+          repository,
+          "status",
+          "--porcelain=v1",
+        ],
+        repository,
+      );
+      await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+
+      await expect(verifiedCleanEngineCommit(repository, repository))
+        .resolves.toBe(commit);
+      await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects repository clean filters before executing them", async () => {
+    const root = await mkdtemp(join(tmpdir(), "schema9-filter-test-"));
+    const repository = join(root, "repository");
+    const marker = join(root, "filter-executed.txt");
+    const filter = join(root, "malicious-filter.sh");
+    try {
+      await mkdir(repository);
+      git(repository, ["init"]);
+      git(repository, ["config", "user.name", "tetizz"]);
+      git(repository, [
+        "config",
+        "user.email",
+        "104690265+tetizz@users.noreply.github.com",
+      ]);
+      await writeFile(
+        join(repository, ".gitattributes"),
+        "tracked.txt filter=marker\n",
+        "utf8",
+      );
+      await writeFile(join(repository, "tracked.txt"), "one\n", "utf8");
+      git(repository, ["add", ".gitattributes", "tracked.txt"]);
+      git(repository, ["commit", "-m", "Filter test state"]);
+      const shellMarker = marker.replaceAll("\\", "/");
+      await writeFile(
+        filter,
+        `#!/bin/sh\nprintf filter-executed > '${shellMarker}'\ncat\n`,
+        "utf8",
+      );
+      await chmod(filter, 0o755);
+      git(repository, [
+        "config",
+        "filter.marker.clean",
+        filter.replaceAll("\\", "/"),
+      ]);
+      await writeFile(join(repository, "tracked.txt"), "two\n", "utf8");
+
+      git(repository, ["status", "--porcelain=v1"]);
+      await expect(access(marker)).resolves.toBeUndefined();
+      await rm(marker);
+
+      await expect(verifiedCleanEngineCommit(repository, repository))
+        .rejects.toThrow("process-bearing filter configuration");
+      await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
