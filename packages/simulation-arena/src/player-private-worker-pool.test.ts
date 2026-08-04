@@ -37,11 +37,12 @@ import {
   PlayerPrivateWorkerSlot,
   type PlayerPrivateWorkerHostedEvaluator,
 } from "./player-private-worker-slot.js";
-import type {
-  PlayerPrivateWorkerFactory,
-  PlayerPrivateWorkerFactoryRequest,
-  PlayerPrivateWorkerTransport,
-  PlayerPrivateWorkerTransportHandlers,
+import {
+  createNodePlayerPrivateWorker,
+  type PlayerPrivateWorkerFactory,
+  type PlayerPrivateWorkerFactoryRequest,
+  type PlayerPrivateWorkerTransport,
+  type PlayerPrivateWorkerTransportHandlers,
 } from "./player-private-worker-transport.js";
 
 const policy: PlayerPrivateSearchPolicy = {
@@ -85,6 +86,58 @@ beforeAll(async () => {
 });
 
 describe("persistent player-private worker pool", () => {
+  it("does not attach one parent stdio error listener per worker", async () => {
+    const stdoutListeners = process.stdout.listenerCount("error");
+    const stderrListeners = process.stderr.listenerCount("error");
+    const pool = await createPlayerPrivateWorkerPool({
+      workers: 15,
+      policy,
+      maxPlies: 1,
+      workerFactory: createNodePlayerPrivateWorker,
+    });
+    try {
+      expect(process.stdout.listenerCount("error")).toBe(stdoutListeners);
+      expect(process.stderr.listenerCount("error")).toBe(stderrListeners);
+    } finally {
+      await pool.close();
+    }
+    expect(process.stdout.listenerCount("error")).toBe(stdoutListeners);
+    expect(process.stderr.listenerCount("error")).toBe(stderrListeners);
+  }, 30_000);
+
+  it.each(["stdout", "stderr"] as const)(
+    "fails closed on unexpected worker %s output",
+    async (stream) => {
+      const source = [
+        `process.${stream}.write("unexpected worker output");`,
+        "setInterval(() => undefined, 1_000);",
+      ].join("\n");
+      const failure = await createPlayerPrivateWorkerPool({
+        workers: 1,
+        policy,
+        maxPlies: 1,
+        attempts: 1,
+        initializationTimeoutMs: 5_000,
+        workerFactory: (request) => createNodePlayerPrivateWorker({
+          ...request,
+          entry: new URL(
+            `data:text/javascript,${encodeURIComponent(source)}`,
+          ),
+        }),
+      }).then(
+        async (pool) => {
+          await pool.close();
+          return undefined;
+        },
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect(errorMessages(failure).join(" ")).toContain(
+        `Player-private worker wrote unexpected ${stream} output.`,
+      );
+    },
+  );
+
   it("launches one fixed worker per slot across repeated batches", async () => {
     const harness = createHarness();
     const pool = await createPlayerPrivateWorkerPool({
