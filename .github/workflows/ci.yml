@@ -44,4 +44,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm smoke:packages
-      - run: pnpm exec vitest run packages/chess-core/src/public-game-trace.test.ts packages/chess-evaluator/src/fairy-stockfish-leaf-evaluator.test.ts packages/simulation-arena/src/parallel.test.ts
+      - run: >-
+          pnpm exec vitest run
+          packages/chess-core/src/public-game-trace.test.ts
+          packages/chess-evaluator/src/fairy-stockfish-leaf-evaluator.test.ts
+          packages/simulation-arena/src/parallel.test.ts
+          apps/engine-cli/src/schema9-runtime-identity.test.ts
+          apps/engine-cli/src/schema9-player-private-bundle.test.ts
+          apps/engine-cli/src/schema9-player-private-cli-lifecycle.test.ts

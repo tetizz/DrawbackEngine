@@ -4,6 +4,7 @@ import { createReadStream, type BigIntStats } from "node:fs";
 import {
   lstat,
   mkdtemp,
+  readdir,
   realpath,
   rename,
   rm,
@@ -32,12 +33,19 @@ import {
   SCHEMA9_SCHEDULE_AUTHORITY_ID,
   SCHEMA9_SCHEDULE_PROFILE,
   type Schema9LedgerSplit,
+  type Schema9ProducerRuntimeIdentity,
 } from "@drawbackengine/simulation-arena";
 import {
   runPlayerPrivateBatch,
   type PlayerPrivateBatchOptions,
   type PlayerPrivateBatchResult,
 } from "./player-private-batch.js";
+import {
+  assertSameSchema9ProducerRuntimeIdentity,
+  assertSchema9ProducerRuntimeIdentity,
+  computeSchema9ProducerRuntimeIdentity,
+  schema9RuntimeDescriptor,
+} from "./schema9-runtime-identity.js";
 
 const FULL_GIT_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const SCHEDULE_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
@@ -67,6 +75,7 @@ export interface Schema9PlayerPrivateBundleOptions {
   readonly scheduleId: string;
   readonly bundlePath: string;
   readonly producerEngineCommit: string;
+  readonly producerRuntimeIdentity: Schema9ProducerRuntimeIdentity;
   readonly signal?: AbortSignal;
   readonly onProgress?: NonNullable<PlayerPrivateBatchOptions["onProgress"]>;
 }
@@ -75,6 +84,7 @@ export interface Schema9PlayerPrivateBundleResult {
   readonly ledgerSplit: Schema9LedgerSplit;
   readonly scheduleId: string;
   readonly producerEngineCommit: string;
+  readonly producerRuntimeIdentity: Schema9ProducerRuntimeIdentity;
   readonly output: Readonly<{
     sha256: string;
     bytes: number;
@@ -88,7 +98,10 @@ export interface Schema9PlayerPrivateBundleResult {
 export interface Schema9PlayerPrivateCliOptions
   extends Omit<
     Schema9PlayerPrivateBundleOptions,
-    "producerEngineCommit" | "signal" | "onProgress"
+    | "producerEngineCommit"
+    | "producerRuntimeIdentity"
+    | "signal"
+    | "onProgress"
   > {
   readonly engineRepository: string;
 }
@@ -98,6 +111,11 @@ export interface Schema9PlayerPrivateBundleDependencies {
     options: PlayerPrivateBatchOptions,
   ) => Promise<PlayerPrivateBatchResult>;
   readonly verifyProducerCommit?: () => Promise<string>;
+  readonly verifyProducerRuntimeIdentity?: (
+  ) => Promise<Schema9ProducerRuntimeIdentity>;
+  readonly beforeFinalBundleAuthentication?: (
+    temporaryPath: string,
+  ) => Promise<void>;
 }
 
 export interface OwnedDirectoryIdentity {
@@ -223,6 +241,7 @@ export async function createSchema9PlayerPrivateBundle(
   if (!FULL_GIT_COMMIT.test(options.producerEngineCommit)) {
     throw new TypeError("Producer Engine commit must be a full Git commit.");
   }
+  assertSchema9ProducerRuntimeIdentity(options.producerRuntimeIdentity);
   checkedWorkers(options.workers);
   throwIfAborted(options.signal);
   const finalPath = resolve(options.bundlePath);
@@ -240,6 +259,15 @@ export async function createSchema9PlayerPrivateBundle(
   const temporaryPath = await mkdtemp(join(parent, TEMPORARY_BUNDLE_PREFIX));
   const ownerIdentity = await ownedSchema9DirectoryIdentity(temporaryPath);
   try {
+    await assertSameProducerCommit(
+      options.producerEngineCommit,
+      dependencies.verifyProducerCommit,
+    );
+    await assertSameProducerRuntimeIdentity(
+      options.producerRuntimeIdentity,
+      dependencies.verifyProducerRuntimeIdentity,
+      options.signal,
+    );
     const launch = Object.freeze({
       format: SCHEMA9_GENERATOR_LAUNCH_FORMAT,
       version: SCHEMA9_GENERATOR_RECEIPT_VERSION,
@@ -252,6 +280,7 @@ export async function createSchema9PlayerPrivateBundle(
       scheduleProfile: schedule.scheduleProfile,
       generationConfig: SCHEMA9_GENERATOR_CONFIG,
       producerEngineCommit: options.producerEngineCommit,
+      producerRuntimeIdentity: options.producerRuntimeIdentity,
     });
     assertPathFreeSchema9Receipt(launch, "Schema-9 launch receipt");
     const launchBytes = canonicalJsonRecord(launch);
@@ -311,6 +340,11 @@ export async function createSchema9PlayerPrivateBundle(
       options.producerEngineCommit,
       dependencies.verifyProducerCommit,
     );
+    await assertSameProducerRuntimeIdentity(
+      options.producerRuntimeIdentity,
+      dependencies.verifyProducerRuntimeIdentity,
+      options.signal,
+    );
     const output = Object.freeze({
       sha256: authenticatedTrace.sha256,
       bytes: authenticatedTrace.bytes,
@@ -325,26 +359,44 @@ export async function createSchema9PlayerPrivateBundle(
       ledgerSplit: schedule.ledgerSplit,
       state: "completed" as const,
       producerEngineCommit: options.producerEngineCommit,
+      producerRuntimeIdentity: options.producerRuntimeIdentity,
       launchReceiptSha256: createHash("sha256")
         .update(launchBytes)
         .digest("hex"),
       output,
     });
     assertPathFreeSchema9Receipt(completion, "Schema-9 completion receipt");
+    const completionBytes = canonicalJsonRecord(completion);
     await writeFile(
       join(temporaryPath, BUNDLE_FILES.completionReceipt),
-      canonicalJsonRecord(completion),
+      completionBytes,
       { flag: "wx", mode: 0o600 },
     );
+    await dependencies.beforeFinalBundleAuthentication?.(temporaryPath);
     await assertSameProducerCommit(
       options.producerEngineCommit,
       dependencies.verifyProducerCommit,
     );
+    await assertSameProducerRuntimeIdentity(
+      options.producerRuntimeIdentity,
+      dependencies.verifyProducerRuntimeIdentity,
+      options.signal,
+    );
+    await assertExactFinalBundle(
+      temporaryPath,
+      ownerIdentity,
+      launchBytes,
+      completionBytes,
+      output,
+      options.signal,
+    );
     throwIfAborted(options.signal);
+    await requireAbsent(publishedPath);
     const result = Object.freeze({
       ledgerSplit: schedule.ledgerSplit,
       scheduleId,
       producerEngineCommit: options.producerEngineCommit,
+      producerRuntimeIdentity: options.producerRuntimeIdentity,
       output,
       files: BUNDLE_FILES,
     });
@@ -357,6 +409,66 @@ export async function createSchema9PlayerPrivateBundle(
       ownerIdentity,
     );
   }
+}
+
+async function assertExactFinalBundle(
+  temporaryPath: string,
+  ownerIdentity: OwnedDirectoryIdentity,
+  launchBytes: Buffer,
+  completionBytes: Buffer,
+  output: Readonly<{ sha256: string; bytes: number }>,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  await assertOwnedSchema9Directory(temporaryPath, ownerIdentity);
+  const files = (await readdir(temporaryPath)).sort();
+  const expectedFiles = Object.values(BUNDLE_FILES).sort();
+  if (
+    files.length !== expectedFiles.length
+    || files.some((file, index) => file !== expectedFiles[index])
+  ) {
+    throw new Error("Schema-9 bundle changed before publication.");
+  }
+  const trace = await authenticateSchema9TraceFile(
+    join(temporaryPath, BUNDLE_FILES.trace),
+    signal,
+  );
+  const launch = await authenticateSchema9TraceFile(
+    join(temporaryPath, BUNDLE_FILES.launchReceipt),
+    signal,
+  );
+  const completion = await authenticateSchema9TraceFile(
+    join(temporaryPath, BUNDLE_FILES.completionReceipt),
+    signal,
+  );
+  if (
+    trace.sha256 !== output.sha256
+    || trace.bytes !== output.bytes
+    || launch.sha256 !== sha256Buffer(launchBytes)
+    || launch.bytes !== launchBytes.length
+    || completion.sha256 !== sha256Buffer(completionBytes)
+    || completion.bytes !== completionBytes.length
+  ) {
+    throw new Error("Schema-9 bundle bytes changed before publication.");
+  }
+  await assertOwnedSchema9Directory(temporaryPath, ownerIdentity);
+}
+
+async function assertOwnedSchema9Directory(
+  path: string,
+  expected: OwnedDirectoryIdentity,
+): Promise<void> {
+  const actual = await ownedSchema9DirectoryIdentity(path);
+  if (
+    actual.dev !== expected.dev
+    || actual.ino !== expected.ino
+    || actual.birthtimeNs !== expected.birthtimeNs
+  ) {
+    throw new Error("Schema-9 bundle owner changed before publication.");
+  }
+}
+
+function sha256Buffer(value: Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function matchesSchema9GenerationConfig(
@@ -493,7 +605,15 @@ export async function authenticateSchema9TraceFile(
     digest.update(chunk);
   }
   throwIfAborted(signal);
-  if (bytes !== metadata.size) {
+  const after = await lstat(path);
+  if (
+    !after.isFile()
+    || after.dev !== metadata.dev
+    || after.ino !== metadata.ino
+    || after.size !== metadata.size
+    || after.mtimeMs !== metadata.mtimeMs
+    || bytes !== metadata.size
+  ) {
     throw new Error("Schema-9 trace changed while it was authenticated.");
   }
   return Object.freeze({ sha256: digest.digest("hex"), bytes });
@@ -593,6 +713,23 @@ async function assertSameProducerCommit(
   if (actual !== expected) {
     throw new Error("Executing Engine commit changed during generation.");
   }
+}
+
+async function assertSameProducerRuntimeIdentity(
+  expected: Schema9ProducerRuntimeIdentity,
+  suppliedVerifier:
+    | (() => Promise<Schema9ProducerRuntimeIdentity>)
+    | undefined,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const verify = suppliedVerifier ?? (() =>
+    computeSchema9ProducerRuntimeIdentity(
+      executingEngineRepository(),
+      schema9RuntimeDescriptor(),
+      signal,
+    ));
+  const actual = await verify();
+  assertSameSchema9ProducerRuntimeIdentity(actual, expected);
 }
 
 function environmentUserTokens(): readonly string[] {

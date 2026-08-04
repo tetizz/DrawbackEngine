@@ -90,6 +90,30 @@ const commit = process.argv[5];
 const { runSchema9PlayerPrivateCli } = await import(cliUrl);
 const { createHash } = await import("node:crypto");
 const { writeFile } = await import("node:fs/promises");
+const runtimeIdentity = Object.freeze({
+  format: "drawbackengine-schema9-producer-runtime",
+  version: 1,
+  algorithm: "sha256-engine-runtime-tree-v1",
+  runtime: Object.freeze({
+    nodeVersion: "v22.17.0",
+    platform: "win32",
+    architecture: "x64",
+    execArgv: Object.freeze([]),
+  }),
+  coordinator: Object.freeze({
+    componentId: "schema9-coordinator/v1",
+    files: 17,
+    bytes: 1234,
+    sha256: "${"1".repeat(64)}",
+  }),
+  parallelWorker: Object.freeze({
+    componentId: "player-private-parallel-worker/v1",
+    files: 13,
+    bytes: 987,
+    sha256: "${"2".repeat(64)}",
+  }),
+  aggregateSha256: "8ae516a9c7dd38ec645f79036806fceb9f75e9e4860426d53b83befee5a0347d",
+});
 let stdout;
 if (mode === "epipe") {
   const { Writable } = await import("node:stream");
@@ -117,8 +141,10 @@ await runSchema9PlayerPrivateCli({
   invocationDirectory: process.cwd(),
   ...(stdout === undefined ? {} : { stdout }),
   verifyCleanCommit: async () => commit,
+  attestProducerRuntime: async () => runtimeIdentity,
   bundleDependencies: {
     verifyProducerCommit: async () => commit,
+    verifyProducerRuntimeIdentity: async () => runtimeIdentity,
     runBatch: async (options) => {
       const trace = Buffer.from("{\"lifecycle\":true}\n", "utf8");
       await writeFile(options.outputPath, trace, { flag: "wx" });

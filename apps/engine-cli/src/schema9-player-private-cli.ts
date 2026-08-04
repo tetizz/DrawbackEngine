@@ -7,6 +7,9 @@ import {
   verifiedCleanEngineCommit,
   type Schema9PlayerPrivateBundleDependencies,
 } from "./schema9-player-private-bundle.js";
+import {
+  attestSchema9ProducerRuntime,
+} from "./schema9-runtime-identity.js";
 import { redactLocalPaths } from "./failure-redaction.js";
 import { writeJsonLine } from "./json-line-writer.js";
 import { retryRetainedCleanup } from "./retained-cleanup.js";
@@ -23,6 +26,7 @@ export interface Schema9PlayerPrivateCliDependencies {
   readonly stdout?: Writable;
   readonly stderr?: Writable;
   readonly verifyCleanCommit?: typeof verifiedCleanEngineCommit;
+  readonly attestProducerRuntime?: typeof attestSchema9ProducerRuntime;
   readonly bundleDependencies?: Schema9PlayerPrivateBundleDependencies;
 }
 
@@ -48,6 +52,13 @@ export async function runSchema9PlayerPrivateCli(
     const producerEngineCommit = await verifyCleanCommit(
       options.engineRepository,
     );
+    const attestProducerRuntime = dependencies.attestProducerRuntime
+      ?? attestSchema9ProducerRuntime;
+    const producerRuntimeIdentity = await attestProducerRuntime(
+      options.engineRepository,
+      producerEngineCommit,
+      termination.signal,
+    );
     const result = await createSchema9PlayerPrivateBundle({
       ledgerSplit: options.ledgerSplit,
       games: options.games,
@@ -55,6 +66,7 @@ export async function runSchema9PlayerPrivateCli(
       scheduleId: options.scheduleId,
       bundlePath: options.bundlePath,
       producerEngineCommit,
+      producerRuntimeIdentity,
       signal: termination.signal,
       onProgress: async ({ games, bytes }) => {
         if (

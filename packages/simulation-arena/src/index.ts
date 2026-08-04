@@ -109,7 +109,12 @@ export {
   SCHEMA9_GENERATOR_COMPLETION_FORMAT,
   SCHEMA9_GENERATOR_LAUNCH_FORMAT,
   SCHEMA9_GENERATOR_RECEIPT_VERSION,
+  SCHEMA9_COORDINATOR_COMPONENT_ID,
   SCHEMA9_LEDGER_SPLITS,
+  SCHEMA9_PARALLEL_WORKER_COMPONENT_ID,
+  SCHEMA9_PRODUCER_RUNTIME_ALGORITHM,
+  SCHEMA9_PRODUCER_RUNTIME_FORMAT,
+  SCHEMA9_PRODUCER_RUNTIME_VERSION,
   SCHEMA9_SCHEDULE_AUTHORITY_ID,
   SCHEMA9_SCHEDULE_PROFILE,
   SCHEMA9_SPLIT_SEED_ROOTS,
@@ -117,6 +122,9 @@ export {
 export type {
   Schema9EngineSchedule,
   Schema9LedgerSplit,
+  Schema9ProducerRuntimeIdentity,
+  Schema9RuntimeComponentIdentity,
+  Schema9RuntimeDescriptor,
   Schema9SeedRoots,
 } from "./schema9-schedule.js";
 export type { BatchConfig, CatalogBatchConfig } from "./batch.js";

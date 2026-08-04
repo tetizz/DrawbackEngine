@@ -14,6 +14,9 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import type {
+  Schema9ProducerRuntimeIdentity,
+} from "@drawbackengine/simulation-arena";
 import {
   createSchema9PlayerPrivateBundle,
   authenticateSchema9TraceFile,
@@ -24,6 +27,7 @@ import {
   verifiedCleanEngineCommit,
   type Schema9PlayerPrivateBundleDependencies,
 } from "./schema9-player-private-bundle.js";
+import { canonicalSchema9RuntimeJson } from "./schema9-runtime-identity.js";
 import type {
   PlayerPrivateBatchOptions,
   PlayerPrivateBatchResult,
@@ -31,6 +35,35 @@ import type {
 
 const COMMIT = "a".repeat(40);
 const TRACE = Buffer.from('{"game":0}\n', "utf8");
+const RUNTIME_IDENTITY_BASE = Object.freeze({
+  format: "drawbackengine-schema9-producer-runtime" as const,
+  version: 1 as const,
+  algorithm: "sha256-engine-runtime-tree-v1" as const,
+  runtime: Object.freeze({
+    nodeVersion: "v22.17.0",
+    platform: "win32",
+    architecture: "x64",
+    execArgv: Object.freeze([] as const),
+  }),
+  coordinator: Object.freeze({
+    componentId: "schema9-coordinator/v1" as const,
+    files: 17,
+    bytes: 1_234,
+    sha256: "1".repeat(64),
+  }),
+  parallelWorker: Object.freeze({
+    componentId: "player-private-parallel-worker/v1" as const,
+    files: 13,
+    bytes: 987,
+    sha256: "2".repeat(64),
+  }),
+});
+const RUNTIME_IDENTITY = Object.freeze({
+  ...RUNTIME_IDENTITY_BASE,
+  aggregateSha256: createHash("sha256")
+    .update(canonicalSchema9RuntimeJson(RUNTIME_IDENTITY_BASE))
+    .digest("hex"),
+}) satisfies Schema9ProducerRuntimeIdentity;
 
 describe("schema-9 player-private bundle", () => {
   it("parses only the complete named invocation", () => {
@@ -90,6 +123,7 @@ describe("schema-9 player-private bundle", () => {
         scheduleId: "schema9-smoke-v1",
         bundlePath,
         producerEngineCommit: COMMIT,
+        producerRuntimeIdentity: RUNTIME_IDENTITY,
       }, fakeBatch());
 
       expect(await readdir(bundlePath)).toEqual([
@@ -112,10 +146,11 @@ describe("schema-9 player-private bundle", () => {
         readonly scheduleProfile: Readonly<Record<string, string>>;
         readonly generationConfig: Readonly<Record<string, unknown>>;
         readonly producerEngineCommit: string;
+        readonly producerRuntimeIdentity: Schema9ProducerRuntimeIdentity;
       };
       expect(launch).toMatchObject({
         format: "drawbackengine-player-private-schedule-launch",
-        version: 2,
+        version: 3,
         scheduleAuthorityId: "capturable25-schema9-opportunity/v1",
         scheduleId: "schema9-smoke-v1",
         ledgerSplit: "validation-b",
@@ -146,6 +181,7 @@ describe("schema-9 player-private bundle", () => {
           },
         },
         producerEngineCommit: COMMIT,
+        producerRuntimeIdentity: RUNTIME_IDENTITY,
       });
 
       const completion = JSON.parse(await readFile(
@@ -161,10 +197,12 @@ describe("schema-9 player-private bundle", () => {
           firstGameIndex: number;
           lastGameIndex: number;
         }>;
+        readonly producerRuntimeIdentity: Schema9ProducerRuntimeIdentity;
       };
       const traceSha256 = createHash("sha256").update(TRACE).digest("hex");
       expect(completion).toMatchObject({
         state: "completed",
+        producerRuntimeIdentity: RUNTIME_IDENTITY,
         launchReceiptSha256: createHash("sha256")
           .update(launchBytes)
           .digest("hex"),
@@ -202,6 +240,7 @@ describe("schema-9 player-private bundle", () => {
     const bundlePath = join(root, "published");
     try {
       const failing: Schema9PlayerPrivateBundleDependencies = {
+        ...fakeBatch(),
         runBatch: async (options) => {
           await writeFile(options.outputPath, TRACE);
           throw new Error("injected batch failure");
@@ -271,6 +310,111 @@ describe("schema-9 player-private bundle", () => {
         drifting,
       )).rejects.toThrow("changed during generation");
       expect(verifications).toBe(2);
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed if executing runtime bytes change before publication", async () => {
+    const root = await mkdtemp(join(tmpdir(), "schema9-runtime-drift-test-"));
+    const bundlePath = join(root, "published");
+    let verifications = 0;
+    try {
+      const changed = Object.freeze({
+        ...RUNTIME_IDENTITY,
+        coordinator: Object.freeze({
+          ...RUNTIME_IDENTITY.coordinator,
+          sha256: "3".repeat(64),
+        }),
+      });
+      const changedIdentity = Object.freeze({
+        ...changed,
+        aggregateSha256: createHash("sha256")
+          .update(canonicalSchema9RuntimeJson({
+            format: changed.format,
+            version: changed.version,
+            algorithm: changed.algorithm,
+            runtime: changed.runtime,
+            coordinator: changed.coordinator,
+            parallelWorker: changed.parallelWorker,
+          }))
+          .digest("hex"),
+      }) satisfies Schema9ProducerRuntimeIdentity;
+      const drifting: Schema9PlayerPrivateBundleDependencies = {
+        ...fakeBatch(),
+        verifyProducerRuntimeIdentity: () => {
+          verifications += 1;
+          return Promise.resolve(
+            verifications < 3 ? RUNTIME_IDENTITY : changedIdentity,
+          );
+        },
+      };
+      await expect(createSchema9PlayerPrivateBundle(
+        baseOptions(bundlePath),
+        drifting,
+      )).rejects.toThrow("isolated clean rebuild");
+      expect(verifications).toBe(3);
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects same-owner output mutation immediately before publication", async () => {
+    const root = await mkdtemp(join(tmpdir(), "schema9-final-mutation-test-"));
+    const bundlePath = join(root, "published");
+    try {
+      const mutating: Schema9PlayerPrivateBundleDependencies = {
+        ...fakeBatch(),
+        beforeFinalBundleAuthentication: async (temporaryPath) => {
+          await writeFile(
+            join(temporaryPath, "trace.ndjson"),
+            Buffer.from('{"mutated":true}\n', "utf8"),
+          );
+        },
+      };
+      await expect(createSchema9PlayerPrivateBundle(
+        baseOptions(bundlePath),
+        mutating,
+      )).rejects.toThrow("changed before publication");
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects mutation by the final runtime verifier before publication", async () => {
+    const root = await mkdtemp(join(tmpdir(), "schema9-verifier-mutation-test-"));
+    const bundlePath = join(root, "published");
+    let temporaryPath: string | undefined;
+    let verifications = 0;
+    try {
+      const mutating: Schema9PlayerPrivateBundleDependencies = {
+        ...fakeBatch(),
+        beforeFinalBundleAuthentication: (path) => {
+          temporaryPath = path;
+          return Promise.resolve();
+        },
+        verifyProducerRuntimeIdentity: async () => {
+          verifications += 1;
+          if (verifications === 3) {
+            if (temporaryPath === undefined) {
+              throw new Error("missing temporary bundle test seam");
+            }
+            await writeFile(
+              join(temporaryPath, "trace.ndjson"),
+              Buffer.from('{"mutated-by-verifier":true}\n', "utf8"),
+            );
+          }
+          return RUNTIME_IDENTITY;
+        },
+      };
+      await expect(createSchema9PlayerPrivateBundle(
+        baseOptions(bundlePath),
+        mutating,
+      )).rejects.toThrow("changed before publication");
+      expect(verifications).toBe(3);
       expect(await readdir(root)).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -481,6 +625,7 @@ function baseOptions(bundlePath: string) {
     scheduleId: "schema9-smoke-v1",
     bundlePath,
     producerEngineCommit: COMMIT,
+    producerRuntimeIdentity: RUNTIME_IDENTITY,
   };
 }
 
@@ -512,6 +657,7 @@ function fakeBatch(
       };
     },
     verifyProducerCommit: () => Promise.resolve(COMMIT),
+    verifyProducerRuntimeIdentity: () => Promise.resolve(RUNTIME_IDENTITY),
   };
 }
 
