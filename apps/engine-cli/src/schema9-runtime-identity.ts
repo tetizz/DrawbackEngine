@@ -19,6 +19,7 @@ import {
   extname,
   isAbsolute,
   join,
+  parse,
   relative,
   sep,
 } from "node:path";
@@ -86,6 +87,16 @@ interface AuthenticatedPnpmEntrypoint {
   readonly sha256: string;
   readonly bytes: number;
   readonly version: string;
+}
+
+interface AuthenticatedGitExecutable {
+  readonly path: string;
+  readonly dev: bigint;
+  readonly ino: bigint;
+  readonly size: bigint;
+  readonly mtimeNs: bigint;
+  readonly ctimeNs: bigint;
+  readonly environment: NodeJS.ProcessEnv;
 }
 
 interface RuntimeFileIdentity {
@@ -853,10 +864,8 @@ async function prepareFreshSnapshot(
   signal: AbortSignal | undefined,
 ): Promise<void> {
   const pnpm = await authenticatedPnpmEntrypoint(sourceRepository, signal);
-  const gitEnvironment = sanitizedChildEnvironment();
   const hooksPath = process.platform === "win32" ? "NUL" : "/dev/null";
-  await runCommand(
-    "git",
+  await runSchema9AuthenticatedGit(
     [
       "--no-replace-objects",
       "-c",
@@ -872,11 +881,9 @@ async function prepareFreshSnapshot(
       snapshotDirectory,
     ],
     dirname(snapshotDirectory),
-    gitEnvironment,
     signal,
   );
-  await runCommand(
-    "git",
+  await runSchema9AuthenticatedGit(
     [
       "--no-replace-objects",
       "-c",
@@ -890,14 +897,11 @@ async function prepareFreshSnapshot(
       producerEngineCommit,
     ],
     dirname(snapshotDirectory),
-    gitEnvironment,
     signal,
   );
-  const head = (await runCommand(
-    "git",
+  const head = (await runSchema9AuthenticatedGit(
     ["--no-replace-objects", "-C", snapshotDirectory, "rev-parse", "HEAD"],
     dirname(snapshotDirectory),
-    gitEnvironment,
     signal,
   )).trim();
   if (head !== producerEngineCommit) {
@@ -933,8 +937,7 @@ async function prepareFreshSnapshot(
     signal,
   );
   await assertPnpmEntrypointUnchanged(pnpm, signal);
-  const status = await runCommand(
-    "git",
+  const status = await runSchema9AuthenticatedGit(
     [
       "--no-replace-objects",
       "-C",
@@ -945,11 +948,132 @@ async function prepareFreshSnapshot(
       "--ignore-submodules=none",
     ],
     dirname(snapshotDirectory),
-    gitEnvironment,
     signal,
   );
   if (status.length !== 0) {
     throw new Error("Isolated Schema-9 rebuild modified tracked source.");
+  }
+}
+
+/** Runs Git from a fixed system location and proves it did not change in use. */
+export async function runSchema9AuthenticatedGit(
+  arguments_: readonly string[],
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const executable = await authenticatedGitExecutable(signal);
+  try {
+    return await runCommand(
+      executable.path,
+      arguments_,
+      cwd,
+      executable.environment,
+      signal,
+    );
+  } finally {
+    await assertAuthenticatedGitUnchanged(executable);
+  }
+}
+
+async function authenticatedGitExecutable(
+  signal: AbortSignal | undefined,
+): Promise<AuthenticatedGitExecutable> {
+  throwIfAborted(signal);
+  let candidate: string;
+  let systemRoot: string | undefined;
+  if (process.platform === "win32") {
+    const configuredSystemRoot = process.env["SystemRoot"]?.trim();
+    if (configuredSystemRoot === undefined || !isAbsolute(configuredSystemRoot)) {
+      throw new TypeError(
+        "Schema-9 Git authentication requires an absolute SystemRoot.",
+      );
+    }
+    systemRoot = await realpath(configuredSystemRoot);
+    const programFiles = await realpath(join(parse(systemRoot).root, "Program Files"));
+    candidate = await realpath(join(programFiles, "Git", "cmd", "git.exe"));
+    const child = relative(programFiles, candidate);
+    if (
+      child === ""
+      || child === ".."
+      || child.startsWith(`..${sep}`)
+      || isAbsolute(child)
+    ) {
+      throw new TypeError("Schema-9 Git escaped the fixed Program Files root.");
+    }
+  } else {
+    const candidates = new Set<string>();
+    for (const path of ["/usr/bin/git", "/bin/git"] as const) {
+      try {
+        const resolved = await realpath(path);
+        const metadata = await lstat(resolved);
+        if (metadata.isFile()) {
+          candidates.add(resolved);
+        }
+      } catch (error: unknown) {
+        if (!isNodeError(error, "ENOENT")) {
+          throw error;
+        }
+      }
+    }
+    if (candidates.size !== 1) {
+      throw new TypeError("Schema-9 requires one fixed system Git executable.");
+    }
+    candidate = [...candidates][0] as string;
+  }
+  throwIfAborted(signal);
+  const metadata = await lstat(candidate, { bigint: true });
+  if (!metadata.isFile()) {
+    throw new TypeError("Schema-9 system Git is not a regular file.");
+  }
+  const environment: NodeJS.ProcessEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => {
+      const canonicalName = name.toUpperCase();
+      return canonicalName === "TEMP" || canonicalName === "TMP";
+    }),
+  );
+  const nullDevice = process.platform === "win32" ? "NUL" : "/dev/null";
+  environment["PATH"] = process.platform === "win32"
+    ? [dirname(candidate), join(systemRoot as string, "System32"), systemRoot as string]
+      .join(";")
+    : "/usr/bin:/bin";
+  if (process.platform === "win32") {
+    environment["SystemRoot"] = systemRoot;
+    environment["WINDIR"] = systemRoot;
+    environment["ComSpec"] = join(systemRoot as string, "System32", "cmd.exe");
+    environment["PATHEXT"] = ".COM;.EXE;.BAT;.CMD";
+  }
+  environment["GIT_ATTR_NOSYSTEM"] = "1";
+  environment["GIT_CONFIG_COUNT"] = "0";
+  environment["GIT_CONFIG_GLOBAL"] = nullDevice;
+  environment["GIT_CONFIG_NOSYSTEM"] = "1";
+  environment["GIT_OPTIONAL_LOCKS"] = "0";
+  environment["GIT_PAGER"] = "cat";
+  environment["GIT_TERMINAL_PROMPT"] = "0";
+  environment["LC_ALL"] = "C";
+  return Object.freeze({
+    path: candidate,
+    dev: metadata.dev,
+    ino: metadata.ino,
+    size: metadata.size,
+    mtimeNs: metadata.mtimeNs,
+    ctimeNs: metadata.ctimeNs,
+    environment,
+  });
+}
+
+async function assertAuthenticatedGitUnchanged(
+  expected: AuthenticatedGitExecutable,
+): Promise<void> {
+  const actual = await lstat(expected.path, { bigint: true });
+  if (
+    !actual.isFile()
+    || actual.dev !== expected.dev
+    || actual.ino !== expected.ino
+    || actual.size !== expected.size
+    || actual.mtimeNs !== expected.mtimeNs
+    || actual.ctimeNs !== expected.ctimeNs
+  ) {
+    throw new Error("Authenticated Schema-9 system Git changed during use.");
   }
 }
 

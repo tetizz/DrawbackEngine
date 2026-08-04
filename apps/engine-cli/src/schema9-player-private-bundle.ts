@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, type BigIntStats } from "node:fs";
 import {
@@ -44,6 +43,7 @@ import {
   assertSameSchema9ProducerRuntimeIdentity,
   assertSchema9ProducerRuntimeIdentity,
   computeSchema9ProducerRuntimeIdentity,
+  runSchema9AuthenticatedGit,
   schema9RuntimeDescriptor,
 } from "./schema9-runtime-identity.js";
 
@@ -868,50 +868,8 @@ function isNodeError(error: unknown, code: string): boolean {
 }
 
 function git(repository: string, arguments_: readonly string[]): Promise<string> {
-  const excluded = new Set([
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_COMMON_DIR",
-    "GIT_CEILING_DIRECTORIES",
-    "GIT_CONFIG_COUNT",
-    "GIT_CONFIG_PARAMETERS",
-    "GIT_CONFIG_SYSTEM",
-    "GIT_NAMESPACE",
-    "GIT_REPLACE_REF_BASE",
-  ]);
-  const environment: NodeJS.ProcessEnv = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) =>
-      !excluded.has(name)
-      && !name.startsWith("GIT_CONFIG_KEY_")
-      && !name.startsWith("GIT_CONFIG_VALUE_")
-    ),
+  return runSchema9AuthenticatedGit(
+    ["--no-replace-objects", "-C", repository, ...arguments_],
+    repository,
   );
-  environment["GIT_CONFIG_NOSYSTEM"] = "1";
-  environment["GIT_CONFIG_GLOBAL"] = process.platform === "win32"
-    ? "NUL"
-    : "/dev/null";
-  return new Promise((accept, reject) => {
-    execFile(
-      "git",
-      ["--no-replace-objects", "-C", repository, ...arguments_],
-      {
-        encoding: "utf8",
-        env: environment,
-        windowsHide: true,
-        maxBuffer: 1024 * 1024,
-      },
-      (error, stdout) => {
-        if (error !== null) {
-          reject(error instanceof Error
-            ? error
-            : new Error("Git process failed.", { cause: error }));
-          return;
-        }
-        accept(stdout);
-      },
-    );
-  });
 }

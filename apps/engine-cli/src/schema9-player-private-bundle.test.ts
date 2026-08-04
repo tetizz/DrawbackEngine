@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   access,
+  chmod,
+  copyFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -592,6 +594,54 @@ describe("schema-9 producer provenance", () => {
     } finally {
       await rm(supplied, { recursive: true, force: true });
       await rm(executing, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores a caller PATH that shadows the system Git executable", async () => {
+    const root = await mkdtemp(join(tmpdir(), "schema9-shadow-git-test-"));
+    const repository = join(root, "repository");
+    const shadow = join(root, "shadow");
+    const previousPath = process.env["PATH"];
+    const previousGitDirectory = process.env["GIT_DIR"];
+    try {
+      await mkdir(repository);
+      git(repository, ["init"]);
+      git(repository, ["config", "user.name", "tetizz"]);
+      git(repository, [
+        "config",
+        "user.email",
+        "104690265+tetizz@users.noreply.github.com",
+      ]);
+      await writeFile(join(repository, "tracked.txt"), "one\n", "utf8");
+      git(repository, ["add", "tracked.txt"]);
+      git(repository, ["commit", "-m", "Shadow test state"]);
+      const commit = git(repository, ["rev-parse", "HEAD"]).trim();
+      await mkdir(shadow);
+      const fakeGit = join(
+        shadow,
+        process.platform === "win32" ? "git.exe" : "git",
+      );
+      await copyFile(process.execPath, fakeGit);
+      if (process.platform !== "win32") {
+        await chmod(fakeGit, 0o755);
+      }
+      process.env["PATH"] = shadow;
+      process.env["GIT_DIR"] = join(root, "attacker-git-dir");
+
+      await expect(verifiedCleanEngineCommit(repository, repository))
+        .resolves.toBe(commit);
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env["PATH"];
+      } else {
+        process.env["PATH"] = previousPath;
+      }
+      if (previousGitDirectory === undefined) {
+        delete process.env["GIT_DIR"];
+      } else {
+        process.env["GIT_DIR"] = previousGitDirectory;
+      }
+      await rm(root, { recursive: true, force: true });
     }
   });
 });
